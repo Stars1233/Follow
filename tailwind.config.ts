@@ -1,207 +1,93 @@
-import "./cssAsPlugin"
-
-import path from "node:path"
-
-import { getIconCollections, iconsPlugin } from "@egoist/tailwindcss-icons"
-import { cleanupSVG, importDirectorySync, isEmptyColor, parseColors, runSVGO } from "@iconify/tools"
-import { compareColors, stringToColor } from "@iconify/utils/lib/colors"
+import plugin from "tailwindcss/plugin"
 import resolveConfig from "tailwindcss/resolveConfig"
 
-/** @type {import('tailwindcss').Config} */
+import { baseTwConfig } from "./configs/tailwind.base.config"
+
+const isWebBuild = !!process.env.WEB_BUILD || !!process.env.RN_BUILD || !!process.env.VERCEL
+
 export default resolveConfig({
-  darkMode: ["class", '[data-theme="dark"]'],
-  content: ["./src/**/*.{ts,tsx}"],
-  prefix: "",
+  ...baseTwConfig,
+  content: [
+    "./apps/renderer/src/**/*.{ts,tsx}",
+    "./apps/web/src/**/*.{ts,tsx}",
+
+    "./apps/renderer/index.html",
+    "./apps/web/index.html",
+    "./packages/**/*.{ts,tsx}",
+    "!./packages/**/node_modules",
+  ],
+  future: {
+    hoverOnlyWhenSupported: isWebBuild,
+  },
   theme: {
-    container: {
-      center: true,
-      padding: "2rem",
-      screens: {
-        "2xl": "1400px",
-      },
-    },
-
+    ...baseTwConfig.theme,
     extend: {
-      fontFamily: {
-        theme: "var(--fo-font-family)",
-        default: "SN pro, sans-serif, system-ui",
-      },
-      colors: {
-        border: "hsl(var(--border) / <alpha-value>)",
-        background: "hsl(var(--background) / <alpha-value>)",
-        foreground: "hsl(var(--foreground) / <alpha-value>)",
-
-        destructive: {
-          DEFAULT: "hsl(var(--destructive) / <alpha-value>)",
-          foreground: "hsl(var(--destructive-foreground) / <alpha-value>)",
-        },
-        muted: {
-          DEFAULT: "hsl(var(--muted) / <alpha-value>)",
-          foreground: "hsl(var(--muted-foreground) / <alpha-value>)",
-        },
-        accent: {
-          DEFAULT: "#ff5c00",
-          foreground: "hsl(var(--fo-text-primary), <alpha-value>)",
-        },
-
-        popover: {
-          DEFAULT: "hsl(var(--popover) / <alpha-value>)",
-          foreground: "hsl(var(--popover-foreground) / <alpha-value>)",
-        },
-        card: {
-          DEFAULT: "hsl(var(--card) / <alpha-value>)",
-          foreground: "hsl(var(--card-foreground) / <alpha-value>)",
-        },
-        native: {
-          DEFAULT: "hsl(var(--fo-native) / <alpha-value>)",
-          active: "hsl(var(--fo-native-active) / <alpha-value>)",
-        },
-
-        theme: {
-          // https://uicolors.app/create
-          accent: {
-            DEFAULT: "#ff5c00",
-            50: "#fff7ec",
-            100: "#ffeed3",
-            200: "#ffd9a5",
-            300: "#ffbd6d",
-            400: "#ff9532",
-            500: "#ff760a",
-            600: "#ff5c00",
-            700: "#cc4102",
-            800: "#a1330b",
-            900: "#822c0c",
-            950: "#461304",
-          },
-
-          vibrancyFg: "hsl(var(--fo-vibrancy-foreground), <alpha-value>)",
-          vibrancyBg: "var(--fo-vibrancy-background)",
-
-          item: {
-            active: "var(--fo-item-active)",
-            hover: "var(--fo-item-hover)",
-          },
-
-          inactive: "hsl(var(--fo-inactive), <alpha-value>)",
-          disabled: "hsl(var(--fo-disabled), <alpha-value>)",
-
-          foreground: "hsl(var(--fo-text-primary), <alpha-value>)",
-          background: "var(--fo-background)",
-
-          "foreground-hover": "hsl(var(--fo-text-primary-hover), <alpha-value>)",
-
-          modal: {
-            background: "var(--fo-modal-background)",
-            "background-opaque": "var(--fo-modal-background-opaque)",
-          },
-          button: {
-            hover: "var(--fo-button-hover)",
-          },
-        },
-      },
-      borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+      ...baseTwConfig.theme?.extend,
+      spacing: {
+        "safe-inset-top": "var(--fo-window-padding-top, 0)",
+        "margin-macos-traffic-light-x": "var(--fo-macos-traffic-light-width, 0)",
+        "margin-macos-traffic-light-y": "var(--fo-macos-traffic-light-height, 0)",
       },
 
-      typography: (theme) => ({
-        zinc: {
-          css: {
-            "--tw-prose-body": theme("colors.zinc.500"),
-            "--tw-prose-quotes": theme("colors.zinc.500"),
-          },
-        },
-      }),
+      height: {
+        screen: "100svh",
+      },
     },
   },
   plugins: [
-    iconsPlugin({
-      collections: {
-        ...getIconCollections(["mingcute", "simple-icons", "logos"]),
-        mgc: getCollections(path.resolve(__dirname, "./icons/mgc")),
-      },
+    ...baseTwConfig.plugins,
+    plugin(({ addVariant }) => {
+      addVariant("f-motion-reduce", '[data-motion-reduce="true"] &')
+      addVariant("group-motion-reduce", ':merge(.group)[data-motion-reduce="true"] &')
+      addVariant("peer-motion-reduce", ':merge(.peer)[data-motion-reduce="true"] ~ &')
+
+      addVariant("zen-mode-macos", ":where(html[data-zen-mode='true'][data-os='macOS']) &")
+      addVariant("zen-mode-windows", ":where(html[data-zen-mode='true'][data-os='Windows']) &")
+
+      addVariant("zen-mode", ":where(html[data-zen-mode='true']) &")
+      addVariant("macos", ":where(html[data-os='macOS']) &")
+      addVariant("windows", ":where(html[data-os='Windows']) &")
     }),
-    require("tailwindcss-animate"),
-    require("@tailwindcss/container-queries"),
-    require("@tailwindcss/typography"),
-    require("./src/renderer/src/styles/tailwind-extend.css"),
-  ],
-})
 
-function getCollections(dir: string) {
-  // Import icons
-  const iconSet = importDirectorySync(dir, {
-    includeSubDirs: false,
-  })
-
-  // Validate, clean up, fix palette and optimism
-  iconSet.forEachSync((name, type) => {
-    if (type !== "icon") {
-      return
-    }
-
-    const svg = iconSet.toSVG(name)
-    if (!svg) {
-      // Invalid icon
-      iconSet.remove(name)
-      return
-    }
-
-    // Clean up and optimize icons
-    try {
-      // Clean up icon code
-      cleanupSVG(svg)
-
-      // Change color to `currentColor`
-      // Skip this step if icon has hardcoded palette
-      const blackColor = stringToColor("black")!
-      const whiteColor = stringToColor("white")!
-      parseColors(svg, {
-        defaultColor: "currentColor",
-        callback: (attr, colorStr, color) => {
-          if (!color) {
-            // Color cannot be parsed!
-            throw new Error(`Invalid color: "${colorStr}" in attribute ${attr}`)
-          }
-
-          if (isEmptyColor(color)) {
-            // Color is empty: 'none' or 'transparent'. Return as is
-            return color
-          }
-
-          // Change black to 'currentColor'
-          if (compareColors(color, blackColor)) {
-            return "currentColor"
-          }
-
-          // Remove shapes with white color
-          if (compareColors(color, whiteColor)) {
-            return "remove"
-          }
-
-          // NOTE: MGC icons has default color of #10161F
-          if (compareColors(color, stringToColor("#10161F")!)) {
-            return "currentColor"
-          }
-
-          // Icon is not monotone
-          return color
+    plugin(({ addUtilities, matchUtilities, theme }) => {
+      addUtilities({
+        ".safe-inset-top": {
+          top: "var(--fo-window-padding-top, 0)",
         },
       })
 
-      runSVGO(svg)
-    } catch (err) {
-      // Invalid icon
-      console.error(`Error parsing ${name}:`, err)
-      iconSet.remove(name)
-      return
-    }
+      const safeInsetTopVariants = {}
+      for (let i = 1; i <= 16; i++) {
+        safeInsetTopVariants[`.safe-inset-top-${i}`] = {
+          top: `calc(var(--fo-window-padding-top, 0px) + ${theme(`spacing.${i}`)})`,
+        }
+      }
+      addUtilities(safeInsetTopVariants)
 
-    // Update icon
-    iconSet.fromSVG(name, svg)
-  })
+      // left macos traffic light
+      const leftMacosTrafficLightVariants = {}
+      addUtilities({
+        ".left-macos-traffic-light": {
+          left: "var(--fo-macos-traffic-light-width, 0)",
+        },
+      })
 
-  // Export
-  return iconSet.export()
-}
+      for (let i = 1; i <= 16; i++) {
+        leftMacosTrafficLightVariants[`.left-macos-traffic-light-${i}`] = {
+          left: `calc(var(--fo-macos-traffic-light-width, 0px) + ${theme(`spacing.${i}`)})`,
+        }
+      }
+      addUtilities(leftMacosTrafficLightVariants)
+
+      // Add arbitrary value support
+      matchUtilities(
+        {
+          "safe-inset-top": (value) => ({
+            top: `calc(var(--fo-window-padding-top, 0px) + ${value})`,
+          }),
+        },
+        { values: theme("spacing") },
+      )
+    }),
+  ],
+})

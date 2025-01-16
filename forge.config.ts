@@ -1,6 +1,6 @@
 import crypto from "node:crypto"
 import fs, { readdirSync } from "node:fs"
-import { readdir } from "node:fs/promises"
+import { cp, readdir } from "node:fs/promises"
 import path, { resolve } from "node:path"
 
 import { FuseV1Options, FuseVersion } from "@electron/fuses"
@@ -11,6 +11,7 @@ import { FusesPlugin } from "@electron-forge/plugin-fuses"
 import type { ForgeConfig } from "@electron-forge/shared-types"
 import MakerAppImage from "@pengx17/electron-forge-maker-appimage"
 import setLanguages from "electron-packager-languages"
+import yaml from "js-yaml"
 import { rimraf, rimrafSync } from "rimraf"
 
 const artifactRegex = /.*\.(?:exe|dmg|AppImage|zip)$/
@@ -25,8 +26,9 @@ const ymlMapsMap = {
   win32: "latest.yml",
 }
 
-const keepModules = new Set(["font-list", "vscode-languagedetection"])
-const keepLanguages = new Set(["en", "en_GB", "zh_CN", "zh-CN", "en-GB"])
+const keepModules = new Set(["font-list", "vscode-languagedetection", "fast-folder-size"])
+const keepLanguages = new Set(["en", "en_GB", "en-US", "en_US"])
+
 // remove folders & files not to be included in the app
 async function cleanSources(buildPath, electronVersion, platform, arch, callback) {
   // folders & files to be included in the app
@@ -58,8 +60,28 @@ async function cleanSources(buildPath, electronVersion, platform, arch, callback
     )),
   ])
 
+  // copy needed node_modules to be included in the app
+  await Promise.all(
+    Array.from(keepModules.values()).map((item) => {
+      // Check is exist
+      if (fs.existsSync(path.join(buildPath, "node_modules", item))) {
+        // eslint-disable-next-line array-callback-return
+        return
+      }
+      return cp(
+        path.join(process.cwd(), "node_modules", item),
+        path.join(buildPath, "node_modules", item),
+        {
+          recursive: true,
+        },
+      )
+    }),
+  )
+
   callback()
 }
+
+const noopAfterCopy = (buildPath, electronVersion, platform, arch, callback) => callback()
 
 const ignorePattern = new RegExp(`^/node_modules/(?!${[...keepModules].join("|")})`)
 
@@ -75,7 +97,10 @@ const config: ForgeConfig = {
       },
     ],
 
-    afterCopy: [cleanSources, setLanguages([...keepLanguages])],
+    afterCopy: [
+      cleanSources,
+      process.platform !== "win32" ? noopAfterCopy : setLanguages([...keepLanguages.values()]),
+    ],
     asar: true,
     ignore: [ignorePattern],
 
@@ -101,8 +126,8 @@ const config: ForgeConfig = {
     new MakerZIP({}, ["darwin"]),
     new MakerDMG({
       overwrite: true,
-      background: "resources/dmg-background.png",
-      icon: "resources/dmg-icon.icns",
+      background: "static/dmg-background.png",
+      icon: "static/dmg-icon.icns",
       iconSize: 160,
       additionalDMGOptions: {
         window: {
@@ -130,11 +155,16 @@ const config: ForgeConfig = {
     new MakerSquirrel({
       name: "Follow",
       setupIcon: "resources/icon.ico",
+      iconUrl: "https://app.follow.is/favicon.ico",
     }),
     new MakerAppImage({
-      options: {
-        icon: "resources/icon.png",
-        mimeType: ["x-scheme-handler/follow"],
+      config: {
+        icons: [
+          {
+            file: "resources/icon.png",
+            size: 256,
+          },
+        ],
       },
     }),
   ],
@@ -208,20 +238,14 @@ const config: ForgeConfig = {
         return result
       })
       yml.releaseDate = new Date().toISOString()
-      const ymlStr =
-        `version: ${yml.version}\n` +
-        `files:\n${yml.files
-          .map(
-            (file) =>
-              `  - url: ${file.url}\n` +
-              `    sha512: ${file.sha512}\n` +
-              `    size: ${file.size}\n`,
-          )
-          .join("")}releaseDate: ${yml.releaseDate}\n`
 
       const ymlPath = `${path.dirname(makeResults[0].artifacts[0])}/${
         ymlMapsMap[makeResults[0].platform]
       }`
+
+      const ymlStr = yaml.dump(yml, {
+        lineWidth: -1,
+      })
       fs.writeFileSync(ymlPath, ymlStr)
 
       makeResults.push({
