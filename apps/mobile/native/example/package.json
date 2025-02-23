@@ -1,0 +1,22 @@
+{
+  "name": "follow-native-example",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "start": "expo start",
+    "web": "expo start --web"
+  },
+  "peerDependencies": {
+    "expo": "52.0.35",
+    "react": "18.3.1",
+    "react-native": "0.77.0"
+  },
+  "expo": {
+    "autolinking": {
+      "nativeModulesDir": ".."
+    }
+  }
+}

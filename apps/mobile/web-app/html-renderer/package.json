@@ -1,0 +1,20 @@
+{
+  "name": "@follow/rn-micro-web-app-html-renderer",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@follow/components": "workspace:*",
+    "@follow/types": "workspace:*",
+    "clsx": "2.1.1",
+    "foxact": "0.2.44",
+    "jotai": "2.11.3",
+    "react": "18.3.1",
+    "react-blurhash": "0.3.0"
+  }
+}
