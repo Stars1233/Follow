@@ -14,6 +14,7 @@ import { useMessaging, useUpdateMessagingToken } from "./hooks/useMessaging"
 import { useOnboarding } from "./hooks/useOnboarding"
 import { useUnreadCountBadge } from "./hooks/useUnreadCountBadge"
 import { useAuthSessionCookieRefresh } from "./lib/auth"
+import { useSyncAppColorScheme } from "./lib/color-scheme"
 import { destination } from "./lib/navigation/biz/Destination"
 import { DebugButton, EnvProfileIndicator } from "./modules/debug"
 import { ReviewPromptProvider } from "./modules/review-prompt/provider"
@@ -56,6 +57,8 @@ const ScaleableWrapper: FC<PropsWithChildren> = ({ children }) => {
 }
 
 const SideEffect = () => {
+  // Must run inside the jotai Provider so it observes the persisted UI settings store.
+  useSyncAppColorScheme()
   useAuthSessionCookieRefresh()
   const sessionQuery = usePrefetchSessionUser()
   const hasHandledInitialSessionRef = useRef(false)

@@ -70,6 +70,10 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          # The action's default also installs the obsolete `tools` package, which the SDK
+          # repository no longer serves, so sdkmanager exits with an error.
+          packages: platform-tools
 
       - name: 📱 Setup EAS
         uses: expo/expo-github-action@v9

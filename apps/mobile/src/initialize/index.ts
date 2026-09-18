@@ -1,11 +1,13 @@
 import { initializeDB } from "@follow/database/db"
 import { hydrateDatabaseToStore } from "@follow/store/hydrate"
+import { ensureSyncedThroughEngine } from "@follow/store/sync/sync-status"
 import { whoami } from "@follow/store/user/getters"
-import { userSyncService } from "@follow/store/user/store"
+import { fetchSessionUser } from "@follow/store/user/hooks"
 import { tracker } from "@follow/tracker"
 import { nativeApplicationVersion } from "expo-application"
 
 import { migrateLegacyApiSession } from "../lib/auth-cookie-migration"
+import { applyStoredAppColorScheme } from "../lib/color-scheme"
 import { settingSyncQueue } from "../modules/settings/sync-queue"
 import { initAnalytics } from "./analytics"
 import { initializeAppCheck } from "./app-check"
@@ -15,6 +17,7 @@ import { initDeviceType } from "./device"
 import { hydrateQueryClient, hydrateSettings } from "./hydrate"
 import { migrateDatabase } from "./migration"
 import { initializePlayer } from "./player"
+import { initSyncTriggers } from "./sync"
 
 type RequestIdleCallback = (callback: () => void, options?: { timeout?: number }) => number
 
@@ -30,11 +33,13 @@ const runWhenIdle = (callback: () => void) => {
   setTimeout(callback, 0)
 }
 
-/* eslint-disable no-console */
 export const initializeApp = async () => {
   console.log(`Initialize...`)
 
   const now = Date.now()
+
+  // Apply the persisted color scheme before the first frame to avoid a theme flash.
+  applyStoredAppColorScheme()
 
   await initDeviceType()
   await initializeDB()
@@ -62,9 +67,15 @@ export const initializeApp = async () => {
   void apm("setting sync", async () => {
     await settingSyncQueue.init()
 
-    await userSyncService.whoami().catch(() => null)
+    await fetchSessionUser().catch(() => null)
 
     if (!whoami()) {
+      return
+    }
+    // With a sync cursor the settings were loaded in full once and are kept current by the
+    // change log (see the "setting" model in the sync queue). Only servers without it still
+    // need the full request on every launch.
+    if (await ensureSyncedThroughEngine()) {
       return
     }
     await settingSyncQueue.syncLocal()
@@ -86,6 +97,7 @@ export const initializeApp = async () => {
   })
 
   initBackgroundTask()
+  initSyncTriggers()
   console.log(`Initialize done,`, `${loadingTime}ms`)
 }
 

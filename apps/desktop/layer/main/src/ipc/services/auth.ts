@@ -5,6 +5,7 @@ import {
 import { env } from "@follow/shared/env.desktop"
 import { createAuthRequestOriginHeaders, createDesktopAPIHeaders } from "@follow/utils/headers"
 import PKG from "@pkg"
+import { net } from "electron"
 import { IpcMethod, IpcService } from "electron-ipc-decorator"
 
 import { BETTER_AUTH_COOKIE_NAME_SESSION_TOKEN } from "~/constants/app"
@@ -114,8 +115,9 @@ export class AuthService extends IpcService {
     payload: Record<string, unknown>,
     headers?: Record<string, string>,
   ) {
-    const response = await fetch(`${env.VITE_API_URL}/better-auth${path}`, {
+    const response = await net.fetch(`${env.VITE_API_URL}/better-auth${path}`, {
       method: "POST",
+      credentials: "omit",
       headers: {
         "content-type": "application/json",
         ...this.getAuthRequestHeaders(headers),
@@ -165,6 +167,13 @@ export class AuthService extends IpcService {
     }
   }
 
+  /**
+   * Every API request of the renderer travels through here. It goes out with `net.fetch`,
+   * Chromium's network stack, so it follows the same proxy settings as the rest of the app,
+   * including the system proxy, PAC files and SOCKS. Node's `fetch` would ignore all of
+   * those. Cookies are attached by hand from the managed auth cookies, so Chromium's own
+   * cookie handling is switched off for these requests.
+   */
   @IpcMethod()
   async fetchWithAuth(payload: {
     body?: string
@@ -192,8 +201,9 @@ export class AuthService extends IpcService {
       }
     }
 
-    const response = await fetch(payload.url, {
+    const response = await net.fetch(payload.url, {
       method: payload.method,
+      credentials: "omit",
       headers,
       body:
         payload.body !== undefined && payload.method !== "GET" && payload.method !== "HEAD"
@@ -236,16 +246,19 @@ export class AuthService extends IpcService {
 
   @IpcMethod()
   async signOutRemote(token?: string): Promise<void> {
-    await fetch(`${env.VITE_API_URL}/better-auth/sign-out`, {
-      method: "POST",
-      headers: this.getAuthRequestHeaders(
-        token
-          ? {
-              Cookie: buildBetterAuthSessionTokenCookieHeader(env.VITE_API_URL, token),
-            }
-          : undefined,
-      ),
-    }).catch(() => {})
+    await net
+      .fetch(`${env.VITE_API_URL}/better-auth/sign-out`, {
+        method: "POST",
+        credentials: "omit",
+        headers: this.getAuthRequestHeaders(
+          token
+            ? {
+                Cookie: buildBetterAuthSessionTokenCookieHeader(env.VITE_API_URL, token),
+              }
+            : undefined,
+        ),
+      })
+      .catch(() => {})
 
     await this.clearSessionToken()
   }
@@ -268,8 +281,9 @@ export class AuthService extends IpcService {
           )
         : "")
 
-    const response = await fetch(`${env.VITE_API_URL}/better-auth/two-factor/verify-totp`, {
+    const response = await net.fetch(`${env.VITE_API_URL}/better-auth/two-factor/verify-totp`, {
       method: "POST",
+      credentials: "omit",
       headers: this.getAuthRequestHeaders({
         "content-type": "application/json",
         ...(cookieHeader ? { Cookie: cookieHeader } : {}),

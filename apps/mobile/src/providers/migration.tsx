@@ -8,6 +8,7 @@ import { PlatformActivityIndicator } from "../components/ui/loading/PlatformActi
 import { getDbPath } from "../database"
 import { BugCuteReIcon } from "../icons/bug_cute_re"
 import { useDatabaseMigration } from "../initialize/migration"
+import { reloadApp } from "../lib/reload-app"
 
 export const MigrationProvider = ({ children }: { children: ReactNode }) => {
   const { success, error } = useDatabaseMigration()
@@ -26,7 +27,7 @@ export const MigrationProvider = ({ children }: { children: ReactNode }) => {
             const dbPath = getDbPath()
             await deleteAsync(dbPath)
             // Reload the app
-            await expo.reloadAppAsync("Clear Sqlite Data")
+            await reloadApp("Clear Sqlite Data")
           }}
         />
       </View>

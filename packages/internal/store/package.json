@@ -81,6 +81,11 @@
       "require": "./src/modules/summary/*.ts",
       "import": "./src/modules/summary/*.ts"
     },
+    "./sync/*": {
+      "types": "./src/sync/*.ts",
+      "require": "./src/sync/*.ts",
+      "import": "./src/sync/*.ts"
+    },
     "./translation/*": {
       "types": "./src/modules/translation/*.ts",
       "require": "./src/modules/translation/*.ts",

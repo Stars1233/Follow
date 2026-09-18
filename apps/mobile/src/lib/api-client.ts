@@ -1,4 +1,5 @@
 import { userActions } from "@follow/store/user/store"
+import { trackApiConnection } from "@follow/utils/api-connection"
 import { createMobileAPIHeaders } from "@follow/utils/headers"
 import { FollowClient } from "@follow-app/client-sdk"
 import { fetch } from "expo/fetch"
@@ -6,20 +7,27 @@ import { nativeApplicationVersion } from "expo-application"
 import { Platform } from "react-native"
 import DeviceInfo from "react-native-device-info"
 
+import { setApiUnreachable } from "@/src/atoms/api-connection"
+
 import { getAuthStateRevision, getCookie, getLastAuthStateChangeAt } from "./auth"
 import { getClientId, getSessionId } from "./client-session"
 import { getUserAgent } from "./native/user-agent"
 import { destination } from "./navigation/biz/Destination"
+import { trackFetch } from "./network-activity"
 import { proxyEnv } from "./proxy-env"
+
+// Tracked so a runtime reload can wait for the requests to settle first (see `reload-app.ts`).
+const trackedFetch = trackFetch(fetch)
 
 export const followClient = new FollowClient({
   credentials: "omit",
   timeout: 60_000,
   baseURL: proxyEnv.API_URL,
-  fetch: async (input, options = {}) => fetch(input.toString(), options as any) as any,
+  fetch: async (input, options = {}) => trackedFetch(input.toString(), options as any) as any,
 })
 
 export const followApi = followClient.api
+
 followClient.addRequestInterceptor(async (ctx) => {
   const { url } = ctx
 
@@ -119,4 +127,18 @@ followClient.addResponseInterceptor(async (ctx) => {
   }
 
   return ctx.response
+})
+
+/** Whether the API answers at all. Any HTTP status counts; the endpoint needs no session. */
+const probeApiReachability = async () => {
+  await trackedFetch(`${proxyEnv.API_URL}/status/configs`, {
+    signal: AbortSignal.timeout(10_000),
+  })
+  return true
+}
+
+trackApiConnection(followClient, {
+  probe: probeApiReachability,
+  onUnreachable: () => setApiUnreachable(true),
+  onRecovered: () => setApiUnreachable(false),
 })

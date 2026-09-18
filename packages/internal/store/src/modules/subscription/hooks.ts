@@ -2,6 +2,7 @@ import { FeedViewType, getViewList } from "@follow/constants"
 import { useQuery } from "@tanstack/react-query"
 import { useCallback, useMemo, useRef } from "react"
 
+import { ensureSyncedThroughEngine } from "../../sync/sync-status"
 import {
   getAllFeedSubscriptionIdsSelector,
   getAllFeedSubscriptionSelector,
@@ -40,7 +41,12 @@ import { getDefaultCategory } from "./utils"
 export const usePrefetchSubscription = (view?: FeedViewType) => {
   return useQuery({
     queryKey: ["subscription", view],
-    queryFn: () => subscriptionSyncService.fetch(view),
+    queryFn: async () => {
+      // With a sync cursor the subscriptions are the local snapshot plus the delta feed; the
+      // full list is only needed when the engine cannot provide that.
+      if (await ensureSyncedThroughEngine()) return null
+      return subscriptionSyncService.fetch(view)
+    },
     staleTime: 30 * 1000 * 60, // 30 minutes
   })
 }

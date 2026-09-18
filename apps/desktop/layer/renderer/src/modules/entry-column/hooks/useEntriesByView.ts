@@ -343,7 +343,7 @@ export const useEntriesByView = ({ onReset }: { onReset?: () => void }) => {
     type: remoteQuery.isReady ? ("remote" as const) : ("local" as const),
     refetch: useCallback(() => {
       const promise = query.refetch()
-      unreadSyncService.resetFromRemote()
+      void unreadSyncService.refresh()
       return promise
     }, [query]),
     entriesIds: entryIds,

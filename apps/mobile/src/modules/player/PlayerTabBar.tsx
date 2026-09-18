@@ -17,7 +17,7 @@ import { useActivePlayable } from "@/src/lib/player"
 import { PlayerScreen } from "@/src/screens/PlayerScreen"
 import { usePrefetchImageColors } from "@/src/store/image/hooks"
 
-import { PlayPauseButton, SeekButton } from "./control"
+import { PlayPauseButton, SeekButton, StopButton } from "./control"
 
 const allowedTabIdentifiers = new Set(["IndexTabScreen", "SubscriptionsTabScreen"])
 export function PlayerTabBar({ className }: { className?: string }) {
@@ -46,13 +46,14 @@ export function PlayerTabBar({ className }: { className?: string }) {
       style={animatedStyle}
       className={cn("border-b-hairline border-opaque-separator/50 px-2", className)}
     >
-      <Pressable
-        testID="player-tab-bar"
-        onPress={() => {
-          navigation.presentControllerView(PlayerScreen, void 0, "transparentModal")
-        }}
-      >
-        <View className="flex flex-row items-center gap-4 overflow-hidden rounded-2xl p-2">
+      <View className="flex-row items-center gap-4 overflow-hidden rounded-2xl p-2">
+        <Pressable
+          testID="player-tab-bar"
+          className="flex-1 flex-row items-center gap-3"
+          onPress={() => {
+            navigation.presentControllerView(PlayerScreen, void 0, "transparentModal")
+          }}
+        >
           <Image
             source={{
               uri: activePlayable?.artwork ?? "",
@@ -64,12 +65,13 @@ export function PlayerTabBar({ className }: { className?: string }) {
               {activePlayable?.title ?? ""}
             </Text>
           </View>
-          <View className="mr-2 flex flex-row gap-4">
-            <PlayPauseButton />
-            <SeekButton />
-          </View>
+        </Pressable>
+        <View className="mr-2 flex-row items-center gap-4">
+          <PlayPauseButton />
+          <SeekButton />
+          <StopButton />
         </View>
-      </Pressable>
+      </View>
     </Animated.View>
   )
 }

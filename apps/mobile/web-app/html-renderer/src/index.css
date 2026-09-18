@@ -4,3 +4,22 @@
 @config "../tailwind.config.ts";
 @source "./";
 @source "../../../../../packages";
+
+/* Reader text color presets, values are provided inline by the native bridge. */
+.reader-text-color {
+  --tw-prose-body: var(--reader-body-light);
+  --tw-prose-lead: var(--reader-body-light);
+  --tw-prose-quotes: var(--reader-body-light);
+  --tw-prose-headings: var(--reader-strong-light);
+  --tw-prose-bold: var(--reader-strong-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  .reader-text-color {
+    --tw-prose-body: var(--reader-body-dark);
+    --tw-prose-lead: var(--reader-body-dark);
+    --tw-prose-quotes: var(--reader-body-dark);
+    --tw-prose-headings: var(--reader-strong-dark);
+    --tw-prose-bold: var(--reader-strong-dark);
+  }
+}

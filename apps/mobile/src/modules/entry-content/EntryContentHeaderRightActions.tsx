@@ -27,9 +27,11 @@ import { StarCuteReIcon } from "@/src/icons/star_cute_re"
 import { Translate2CuteReIcon } from "@/src/icons/translate_2_cute_re"
 import { VoiceCuteReIcon } from "@/src/icons/voice_cute_re"
 import { hideIntelligenceGlowEffect, openLink } from "@/src/lib/native"
+import { useNavigation } from "@/src/lib/navigation/hooks"
 import { createLinkShareContent } from "@/src/lib/share"
 import { toast } from "@/src/lib/toast"
 import { playEntryTts } from "@/src/modules/player/entry-tts"
+import { ReadingScreen } from "@/src/modules/settings/routes/Reading"
 
 import { useEntryContentContext } from "./ctx"
 
@@ -61,6 +63,7 @@ const HeaderRightActionsImpl = ({
   isHeaderTitleVisible,
 }: HeaderRightActionsProps) => {
   const { t } = useTranslation()
+  const navigation = useNavigation()
   const labelColor = useColor("label")
   const isLoggedIn = useIsLoggedIn()
   const isStarred = useIsEntryStarred(entryId)
@@ -205,6 +208,15 @@ const HeaderRightActionsImpl = ({
       title: "Open in Browser",
       iconIOS: { name: "safari" },
       onPress: handleOpenInBrowser,
+      inMenu: true,
+    },
+    {
+      key: "ReadingSettings",
+      title: t("entry_content.header.reading_settings"),
+      iconIOS: { name: "textformat.size" },
+      onPress: () => {
+        navigation.pushControllerView(ReadingScreen)
+      },
       inMenu: true,
     },
   ].filter(Boolean) as ActionItem[]

@@ -5,6 +5,8 @@ import {
   pickSpotlightPayloadFromRemoteAppearance,
   toAppearanceSpotlightPayload,
 } from "@follow/shared/spotlight"
+import { registerSyncModel } from "@follow/store/sync/model-registry"
+import type { SyncAction } from "@follow/store/sync/types"
 import { whoami } from "@follow/store/user/getters"
 import { tracker } from "@follow/tracker"
 import { EventBus } from "@follow/utils/event-bus"
@@ -619,7 +621,50 @@ class SettingSyncQueue {
     }
   }
 
-  async syncLocal() {
+  /**
+   * One settings tab changed on the server, reported by the sync engine's change log. The
+   * action carries what `GET /settings` would return for that tab, so it goes through the
+   * same last-writer-wins merge as a full sync.
+   */
+  async applyRemoteChange(action: SyncAction) {
+    if (action.action !== "U" || !action.modelId) return
+    const tab = action.modelId as RemoteSettingsTab
+    const data = action.data as { payload?: Record<string, unknown>; updatedAt?: string } | null
+    if (!data?.updatedAt) return
+
+    // A local change to this tab is still waiting to be sent. It wins for now, and the
+    // server's answer to it is logged with both changes merged.
+    if (this.queue.some((item) => remoteTabMap[item.tab] === tab)) return
+
+    if (!data.payload) {
+      // Tabs that hold credentials are logged without their payload: read them the usual way.
+      await this.syncLocal()
+      return
+    }
+
+    const { payload, updatedAt } = data
+    this.applyRemoteSettings({
+      code: 0,
+      settings: { [tab]: payload },
+      updated: { [tab]: updatedAt },
+    })
+    // Keep the cached `/settings` response in step for the settings dialog.
+    queryClient.setQueryData<RemoteSettingsResponse>(settings.get().key, (current) =>
+      current
+        ? {
+            ...current,
+            settings: { ...current.settings, [tab]: payload },
+            updated: { ...current.updated, [tab]: updatedAt },
+          }
+        : current,
+    )
+  }
+
+  /**
+   * @param rethrow let a failed request reach the caller. The sync engine needs it: a load
+   * that did not happen must not count as done.
+   */
+  async syncLocal(options?: { rethrow?: boolean }) {
     const currentUserId = this.getCurrentUserId()
     if (!currentUserId) return
 
@@ -633,6 +678,7 @@ class SettingSyncQueue {
       }
 
       this.reportSyncError("syncLocal", error)
+      if (options?.rethrow) throw error
       return null
     })
 
@@ -643,3 +689,10 @@ class SettingSyncQueue {
 }
 
 export const settingSyncQueue = new SettingSyncQueue()
+
+// Registered at module load, before the sync engine starts: once the settings were loaded in
+// full, launches no longer request them and other devices' changes arrive through the log.
+registerSyncModel("setting", {
+  bootstrap: () => settingSyncQueue.syncLocal({ rethrow: true }),
+  apply: (action) => settingSyncQueue.applyRemoteChange(action),
+})

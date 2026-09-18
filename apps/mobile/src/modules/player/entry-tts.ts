@@ -1,6 +1,6 @@
 import { getEntry } from "@follow/store/entry/getter"
 import { getFeedById } from "@follow/store/feed/getter"
-import TrackPlayer, { State } from "react-native-track-player"
+import TrackPlayer from "@rntp/player"
 
 import { getGeneralSettings } from "@/src/atoms/settings/general"
 import { toastFetchError } from "@/src/lib/error-parser"
@@ -21,8 +21,8 @@ const isSameEntryTtsTrack = async (entryId: string) => {
     return false
   }
 
-  const activeTrack = await TrackPlayer.getActiveTrack()
-  return activeTrack?.url === activeTtsTrackUrl
+  const activeTrack = TrackPlayer.getActiveMediaItem()
+  return activeTrack?.mediaId === activeTtsTrackUrl
 }
 
 const toggleCurrentTtsPlayback = async () => {
@@ -31,14 +31,12 @@ const toggleCurrentTtsPlayback = async () => {
     return
   }
 
-  const { state } = await TrackPlayer.getPlaybackState()
-
-  if ([State.Playing, State.Buffering, State.Loading].includes(state)) {
-    await TrackPlayer.pause()
+  if (player.isPlaying()) {
+    await player.pause()
     return
   }
 
-  await TrackPlayer.play()
+  await player.play()
 }
 
 export const playEntryTts = async (

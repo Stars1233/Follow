@@ -3,6 +3,7 @@ import { FeedViewType } from "@follow/constants"
 import { getServerConfigs } from "~/atoms/server-configs"
 
 import { FEED_COLLECTION_LIST, ROUTE_FEED_PENDING } from "../constants/app"
+import type { LegacyServerConfigs } from "./wallet-compat"
 
 export function getEntriesParams({
   feedId,
@@ -56,7 +57,9 @@ export const getLevelMultiplier = (level: number) => {
 }
 
 export const getBlockchainExplorerUrl = () => {
-  const serverConfigs = getServerConfigs()
+  // Current servers no longer report this flag; keep honouring it when it is present.
+  const serverConfigs = getServerConfigs() as
+    (NonNullable<ReturnType<typeof getServerConfigs>> & LegacyServerConfigs) | null | undefined
 
   if (serverConfigs?.IS_RSS3_TESTNET) {
     return `https://scan.testnet.rss3.io`

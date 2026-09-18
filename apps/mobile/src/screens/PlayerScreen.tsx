@@ -1,13 +1,14 @@
 import { cn } from "@follow/utils"
 import { LinearGradient } from "expo-linear-gradient"
 import { useEffect, useMemo } from "react"
-import { SafeAreaView, StyleSheet, View } from "react-native"
+import { StyleSheet, View } from "react-native"
 import Reanimated, {
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
 } from "react-native-reanimated"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { SheetScreen } from "react-native-sheet-transitions"
 
 import { Image } from "@/src/components/ui/image/Image"
@@ -25,7 +26,7 @@ import { usePrefetchImageColors } from "../store/image/hooks"
 function CoverArt({ cover }: { cover?: string }) {
   const scale = useSharedValue(1)
   const ttsStream = useTtsStreamPlayback()
-  const { playing } = useIsPlaying()
+  const playing = useIsPlaying()
   const isPlaying = ttsStream.entryId ? ttsStream.status === "playing" : playing
   useEffect(() => {
     cancelAnimation(scale)
@@ -52,6 +53,11 @@ function CoverArt({ cover }: { cover?: string }) {
   )
 }
 export const PlayerScreen: NavigationControllerView = () => {
+  const insets = useSafeAreaInsets()
+  const contentStyle = useMemo(
+    () => ({ paddingTop: insets.top, paddingBottom: insets.bottom }),
+    [insets.top, insets.bottom],
+  )
   const activePlayable = useActivePlayable()
   usePrefetchImageColors(activePlayable?.artwork ?? undefined)
   const { gradientColors, isGradientLight } = useCoverGradient(activePlayable?.artwork ?? undefined)
@@ -80,7 +86,7 @@ export const PlayerScreen: NavigationControllerView = () => {
             y: 0,
           }}
         />
-        <SafeAreaView className="flex-1">
+        <View className="flex-1" style={contentStyle}>
           <View className="flex-1">
             <DismissIndicator />
             <CoverArt cover={activePlayable.artwork ?? undefined} />
@@ -109,7 +115,7 @@ export const PlayerScreen: NavigationControllerView = () => {
               <VolumeBar />
             </View>
           </View>
-        </SafeAreaView>
+        </View>
       </PlayerScreenContext>
     </SheetScreen>
   )

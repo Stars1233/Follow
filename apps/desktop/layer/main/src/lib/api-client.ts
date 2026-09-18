@@ -2,6 +2,7 @@ import { env } from "@follow/shared/env.desktop"
 import { createDesktopAPIHeaders } from "@follow/utils/headers"
 import { FollowClient } from "@follow-app/client-sdk"
 import PKG, { mainHash, version as appVersion } from "@pkg"
+import { net } from "electron"
 import { gte } from "semver"
 
 import { WindowManager } from "~/manager/window"
@@ -15,9 +16,12 @@ export const followClient = new FollowClient({
   timeout: 10000,
 
   baseURL: env.VITE_API_URL,
+  // Chromium's network stack, so the app's proxy settings apply. The session cookie is put
+  // on the request by the interceptor below; Chromium's own cookie handling stays off.
   fetch: async (input, options = {}) =>
-    fetch(input.toString(), {
+    net.fetch(input.toString(), {
       ...options,
+      credentials: "omit",
       cache: "no-store",
     }),
 })

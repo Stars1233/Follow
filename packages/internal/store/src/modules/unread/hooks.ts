@@ -2,6 +2,11 @@ import type { FeedViewType } from "@follow/constants"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { useCallback, useEffect } from "react"
 
+import {
+  ensureSyncedThroughEngine,
+  isSyncEngineActive,
+  requestUnreadCalibration,
+} from "../../sync/sync-status"
 import { getEntry } from "../entry/getter"
 import { useListFeedIds } from "../list/hooks"
 import { useSubscriptionIdsByView } from "../subscription/hooks"
@@ -13,35 +18,53 @@ export const usePrefetchUnread = () => {
   const isLoggedIn = useIsLoggedIn()
   return useQuery({
     queryKey: ["unread"],
-    queryFn: () => unreadSyncService.resetFromRemote(),
+    queryFn: async () => {
+      // With a sync cursor the counters are the local snapshot plus the delta feed; the
+      // recount is only needed when the engine cannot provide that.
+      if (await ensureSyncedThroughEngine()) return null
+      return unreadSyncService.resetFromRemote()
+    },
     staleTime: 5 * 1000 * 60, // 5 minutes
     enabled: isLoggedIn,
   })
 }
 
+const hasUnreadMismatch = (entryIds: string[]) => {
+  const unreadCountMap: Record<string, number> = {}
+  for (const entryId of entryIds) {
+    const entry = getEntry(entryId)
+    if (entry && entry.feedId && !entry.read) {
+      unreadCountMap[entry.feedId] = (unreadCountMap[entry.feedId] || 0) + 1
+    }
+  }
+
+  const unread = useUnreadStore.getState().data
+  return Object.keys(unreadCountMap).some(
+    (feedId) =>
+      !unread[feedId] || (unreadCountMap[feedId] && unreadCountMap[feedId] > unread[feedId]),
+  )
+}
+
+/**
+ * Notice counters that are lower than the unread entries on screen. Without the sync engine
+ * the counters are fetched again. With it, the list is usually just ahead of the next pull,
+ * so the delta feed is applied first and a recount is only asked for if that did not help.
+ */
 export const useSyncUnreadWhenUnMatch = (entryIds: string[]) => {
   useEffect(() => {
-    const entries = entryIds.map((id) => getEntry(id))
-    const unreadCountMap = entries.reduce(
-      (acc, entry) => {
-        if (entry && entry.feedId && !entry?.read) {
-          acc[entry.feedId] = (acc[entry.feedId] || 0) + 1
-        }
-        return acc
-      },
-      {} as Record<string, number>,
-    )
+    if (!hasUnreadMismatch(entryIds)) return
 
-    const unread = useUnreadStore.getState().data
-
-    const hasUnreadMismatch = Object.keys(unreadCountMap).some(
-      (feedId) =>
-        !unread[feedId] || (unreadCountMap[feedId] && unreadCountMap[feedId] > unread[feedId]),
-    )
-
-    if (hasUnreadMismatch) {
+    if (!isSyncEngineActive()) {
       unreadSyncService.resetFromRemote()
+      return
     }
+
+    void (async () => {
+      await ensureSyncedThroughEngine()
+      if (hasUnreadMismatch(entryIds)) {
+        await requestUnreadCalibration()
+      }
+    })()
   }, [entryIds.toString()])
 }
 

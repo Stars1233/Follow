@@ -1,8 +1,15 @@
 import "./wdyr"
 import "./styles/main.css"
+// Registers the "messaging" sync model before the sync engine starts.
+import "./lib/web-push-registration"
 
 import { IN_ELECTRON, WEB_BUILD } from "@follow/shared/constants"
-import { apiContext, authClientContext, queryClientContext } from "@follow/store/context"
+import {
+  apiContext,
+  authClientContext,
+  queryClientContext,
+  syncApiContext,
+} from "@follow/store/context"
 import { getOS } from "@follow/utils/utils"
 import * as React from "react"
 import { flushSync } from "react-dom"
@@ -22,6 +29,7 @@ import { router } from "./router"
 authClientContext.provide(authClient)
 queryClientContext.provide(queryClient)
 apiContext.provide(followApi)
+syncApiContext.provide(followApi.sync)
 
 initializeApp().finally(() => {
   import("./push-notification").then(({ registerWebPushNotifications }) => {

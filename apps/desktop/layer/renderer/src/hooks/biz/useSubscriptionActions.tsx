@@ -31,7 +31,8 @@ export const useDeleteSubscription = ({ onSuccess }: { onSuccess?: () => void } 
       subscriptionSyncService
         .unsubscribe([subscription.feedId, subscription.listId])
         .then(([feed]) => {
-          subscriptionSyncService.fetch()
+          // Already applied locally; only servers without a change log need the full list.
+          void subscriptionSyncService.refresh()
 
           if (!subscription) return
           if (!feed) return

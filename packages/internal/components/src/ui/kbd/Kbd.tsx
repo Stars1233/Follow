@@ -57,7 +57,8 @@ export const KbdCombined: FC<{
   kbdProps?: Partial<React.ComponentProps<typeof Kbd>>
   abbr?: string
 }> = ({ children, joint, className, kbdProps, abbr }) => {
-  const keys = children.split(",")
+  // A trailing "," is the comma key itself (e.g. "$mod+,"), not a separator
+  const keys = children.split(/,(?!,|$)/)
   return (
     <div className="flex items-center gap-1">
       {keys.map((k, i) => (

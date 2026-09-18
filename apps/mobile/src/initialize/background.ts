@@ -20,7 +20,7 @@ TaskManager.defineTask(BACKGROUND_FETCH_TASK, async () => {
   }
 
   try {
-    await unreadSyncService.resetFromRemote()
+    await unreadSyncService.refresh()
     const allUnreadCount = getUnreadAll()
     await setBadgeCountAsyncWithPermission(allUnreadCount)
     return BackgroundTask.BackgroundTaskResult.Success

@@ -1,3 +1,4 @@
+import { subscriptionSyncService } from "@follow/store/subscription/store"
 import { userSyncService } from "@follow/store/user/store"
 import * as DocumentPicker from "expo-document-picker"
 import * as FileSystem from "expo-file-system/legacy"
@@ -68,6 +69,8 @@ export const importOpml = async () => {
     } as FileUpload as any)
 
     const { data } = await followApi.subscriptions.import(formData)
+    // The import is logged per feed, so the delta feed delivers exactly what was added.
+    void subscriptionSyncService.refresh(undefined, { afterServerChange: true })
 
     const { successfulItems, conflictItems, parsedErrorItems } = data
     toast.success(

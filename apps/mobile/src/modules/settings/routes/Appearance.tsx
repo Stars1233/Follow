@@ -1,8 +1,7 @@
 import { getUnreadAll } from "@follow/store/unread/getters"
-import { themeNames } from "@shikijs/themes"
 import { useTranslation } from "react-i18next"
-import { useColorScheme } from "react-native"
 
+import type { AppColorScheme } from "@/src/atoms/settings/ui"
 import { setUISetting, useUISettingKey } from "@/src/atoms/settings/ui"
 import {
   NavigationBlurEffectHeaderView,
@@ -12,11 +11,15 @@ import { Select } from "@/src/components/ui/form/Select"
 import {
   GroupedInsetListCard,
   GroupedInsetListCell,
+  GroupedInsetListNavigationLink,
   GroupedInsetListSectionHeader,
 } from "@/src/components/ui/grouped/GroupedList"
 import { Switch } from "@/src/components/ui/switch/Switch"
+import { useNavigation } from "@/src/lib/navigation/hooks"
 // Font size presets
 import { setBadgeCountAsyncWithPermission } from "@/src/lib/permission"
+
+import { ReadingScreen } from "./Reading"
 
 const fontSizePresets = [
   {
@@ -65,19 +68,18 @@ const contentFontSizePresets = [
   },
 ] as const
 
+const colorSchemeOptions = ["system", "light", "dark"] as const satisfies readonly AppColorScheme[]
+
 export const AppearanceScreen = () => {
   const { t } = useTranslation("settings")
+  const navigation = useNavigation()
+  const colorScheme = useUISettingKey("colorScheme")
   const showUnreadCountViewAndSubscriptionMobile = useUISettingKey(
     "showUnreadCountViewAndSubscriptionMobile",
   )
   const showUnreadCountBadgeMobile = useUISettingKey("showUnreadCountBadgeMobile")
   const hideExtraBadge = useUISettingKey("hideExtraBadge")
   const thumbnailRatio = useUISettingKey("thumbnailRatio")
-  const codeThemeLight = useUISettingKey("codeHighlightThemeLight")
-  const codeThemeDark = useUISettingKey("codeHighlightThemeDark")
-  const colorScheme = useColorScheme()
-  const readerRenderInlineStyle = useUISettingKey("readerRenderInlineStyle")
-  const hideRecentReader = useUISettingKey("hideRecentReader")
 
   // Font scaling settings
   const fontScale = useUISettingKey("fontScale")
@@ -90,10 +92,38 @@ export const AppearanceScreen = () => {
       className="bg-system-grouped-background"
       Header={<NavigationBlurEffectHeaderView title={t("appearance.title")} />}
     >
-      <GroupedInsetListSectionHeader
-        label={t("appearance.unread_count.label")}
-        marginSize="small"
-      />
+      <GroupedInsetListSectionHeader label={t("appearance.general")} marginSize="small" />
+      <GroupedInsetListCard>
+        <GroupedInsetListCell
+          label={t("appearance.theme.label")}
+          description={t("appearance.theme.description")}
+        >
+          <Select
+            wrapperClassName={selectWrapperClassName}
+            options={colorSchemeOptions.map((option) => ({
+              label: t(`appearance.theme.${option}`),
+              value: option,
+            }))}
+            value={colorScheme ?? "system"}
+            onValueChange={(val) => {
+              setUISetting("colorScheme", val)
+            }}
+          />
+        </GroupedInsetListCell>
+      </GroupedInsetListCard>
+
+      <GroupedInsetListSectionHeader label={t("appearance.content")} />
+      <GroupedInsetListCard>
+        <GroupedInsetListNavigationLink
+          label={t("appearance.reading.title")}
+          description={t("appearance.reading.description")}
+          onPress={() => {
+            navigation.pushControllerView(ReadingScreen)
+          }}
+        />
+      </GroupedInsetListCard>
+
+      <GroupedInsetListSectionHeader label={t("appearance.unread_count.label")} />
       <GroupedInsetListCard>
         <GroupedInsetListCell
           label={t("appearance.unread_count.badge.label")}
@@ -221,49 +251,6 @@ export const AppearanceScreen = () => {
             />
           </GroupedInsetListCell>
         )}
-      </GroupedInsetListCard>
-
-      <GroupedInsetListSectionHeader label={t("appearance.content")} />
-      <GroupedInsetListCard>
-        <GroupedInsetListCell label={t("appearance.code_highlight_theme.label")}>
-          <Select
-            wrapperClassName={selectWrapperClassName}
-            options={themeNames.map((theme) => ({
-              label: theme,
-              value: theme,
-            }))}
-            value={colorScheme === "dark" ? codeThemeDark : codeThemeLight}
-            onValueChange={(val) => {
-              setUISetting(`codeHighlightTheme${colorScheme === "dark" ? "Dark" : "Light"}`, val)
-            }}
-          />
-        </GroupedInsetListCell>
-
-        <GroupedInsetListCell
-          label={t("appearance.reader_render_inline_style.label")}
-          description={t("appearance.reader_render_inline_style.description")}
-        >
-          <Switch
-            size="sm"
-            value={readerRenderInlineStyle}
-            onValueChange={(val) => {
-              setUISetting("readerRenderInlineStyle", val)
-            }}
-          />
-        </GroupedInsetListCell>
-
-        <GroupedInsetListCell
-          label={t("appearance.hide_recent_reader.label")}
-          description={t("appearance.hide_recent_reader.description")}
-        >
-          <Switch
-            size="sm"
-            value={hideRecentReader}
-            onValueChange={(val) => {
-              setUISetting("hideRecentReader", val)
-            }}
-          />
-        </GroupedInsetListCell>
       </GroupedInsetListCard>
     </SafeNavigationScrollView>
   )

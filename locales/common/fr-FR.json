@@ -1,4 +1,5 @@
 {
+  "app.api_unreachable": "Impossible de se connecter au serveur. Veuillez vérifier votre connexion réseau.",
   "app.copied_to_clipboard": "Copié dans le presse-papier",
   "discover.category.all": "Populaire",
   "discover.category.anime": "Anime / Manga",

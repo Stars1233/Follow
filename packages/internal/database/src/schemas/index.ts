@@ -209,3 +209,27 @@ export const aiChatMessagesTable = sqliteTable(
 )
 
 export type AiChatMessagesModel = typeof aiChatMessagesTable.$inferSelect
+
+/**
+ * Local outbox for user mutations that have not been acknowledged by the server yet.
+ * Mirrors the `_transaction` table of Linear's sync engine: a transaction is written here
+ * when it is created, replayed on startup, and removed once the server confirms it.
+ */
+export const syncTransactionsTable = sqliteTable(
+  "sync_transactions",
+  (t) => ({
+    id: t.text("id").notNull().primaryKey(),
+    kind: t.text("kind").notNull(),
+    payload: t.text("payload", { mode: "json" }).$type<unknown>().notNull(),
+    createdAt: t.integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  }),
+  (table) => [index("idx_sync_transactions_created_at").on(table.createdAt)],
+)
+
+/**
+ * Small key/value store for sync bookkeeping, such as the last applied sync id.
+ */
+export const syncMetaTable = sqliteTable("sync_meta", (t) => ({
+  key: t.text("key").notNull().primaryKey(),
+  value: t.text("value").notNull(),
+}))

@@ -2,8 +2,9 @@ import { initializeDayjs } from "@follow/components/dayjs"
 import { registerGlobalContext } from "@follow/shared/bridge"
 import { DEV, ELECTRON_BUILD, IN_ELECTRON } from "@follow/shared/constants"
 import { hydrateDatabaseToStore } from "@follow/store/hydrate"
+import { ensureSyncedThroughEngine } from "@follow/store/sync/sync-status"
 import { whoami } from "@follow/store/user/getters"
-import { userSyncService } from "@follow/store/user/store"
+import { fetchSessionUser } from "@follow/store/user/hooks"
 import { tracker } from "@follow/tracker"
 import { repository } from "@pkg"
 import { enableMapSet } from "immer"
@@ -86,9 +87,15 @@ export const initializeApp = async () => {
   void apm("setting sync", async () => {
     await settingSyncQueue.init()
 
-    await userSyncService.whoami().catch(() => null)
+    await fetchSessionUser().catch(() => null)
 
     if (!whoami()) {
+      return
+    }
+    // With a sync cursor the settings were loaded in full once and are kept current by the
+    // change log (see the "setting" model in the sync queue). Only servers without it still
+    // need the full request on every launch.
+    if (await ensureSyncedThroughEngine()) {
       return
     }
     await settingSyncQueue.syncLocal()

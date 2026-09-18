@@ -126,7 +126,7 @@ const SubscriptionListImpl = ({
   }, [inboxes.length, sortedGrouped.length, sortedListIds.length, sortedUnGrouped.length])
   const [refreshing, setRefreshing] = useState(false)
   const onRefresh = useEventCallback(() => {
-    return subscriptionSyncService.fetch(view)
+    return subscriptionSyncService.refresh(view)
   })
   const scrollViewRef = useRegisterNavigationScrollView<FlashListRef<any> | null>(active)
 

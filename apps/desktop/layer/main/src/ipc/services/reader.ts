@@ -2,7 +2,7 @@ import fs from "node:fs"
 
 import { callWindowExpose } from "@follow/shared/bridge"
 import { readability } from "@follow-app/readability"
-import { app, BrowserWindow } from "electron"
+import { app, BrowserWindow, net } from "electron"
 import { getIpcContext, IpcMethod, IpcService } from "electron-ipc-decorator"
 import path from "pathe"
 import type { ModelResult } from "vscode-languagedetection"
@@ -79,7 +79,8 @@ export class ReaderService extends IpcService {
     if (!url) {
       return null
     }
-    const result = await readability(url)
+    // Through Chromium's network stack, so the page is fetched with the app's proxy settings.
+    const result = await readability(url, { fetch: (input, init) => net.fetch(input, init) })
 
     return result
   }
@@ -104,7 +105,7 @@ export class ReaderService extends IpcService {
     }
 
     try {
-      const response = await fetch(`${TTS_SERVICE_URL}/tts`, {
+      const response = await net.fetch(`${TTS_SERVICE_URL}/tts`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -133,7 +134,7 @@ export class ReaderService extends IpcService {
   async getVoices() {
     const window = BrowserWindow.fromWebContents(getIpcContext().sender)
     try {
-      const response = await fetch(`${TTS_SERVICE_URL}/voices`)
+      const response = await net.fetch(`${TTS_SERVICE_URL}/voices`)
       if (!response.ok) {
         throw new Error(await readTtsErrorMessage(response))
       }

@@ -42,6 +42,19 @@ module.exports = function withRNFBBuildProperties(config) {
         definitions << 'FMT_USE_CONSTEVAL=0' unless definitions.include?('FMT_USE_CONSTEVAL=0')
         config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = definitions
       end
+    end
+
+    # Xcode 27 refuses deployment targets below iOS 15, and its Swift compiler rejects iOS 16
+    # APIs in pods that still declare an older floor (react-native-ios-context-menu, for one).
+    # The app itself requires ios.deploymentTarget, so every pod target is raised to at least that.
+    deployment_target = (podfile_properties['ios.deploymentTarget'] || '16.4').to_f
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        current_target = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f
+        if current_target < deployment_target
+          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = deployment_target.to_s
+        end
+      end
     end`,
       anchor: /post_install do \|installer\|/,
       offset: 7,

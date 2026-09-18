@@ -1,4 +1,5 @@
 {
+  "app.api_unreachable": "無法連線到伺服器，請檢查你的網路連線。",
   "app.copied_to_clipboard": "已複製到剪貼簿",
   "discover.category.all": "全部",
   "discover.category.anime": "動漫",

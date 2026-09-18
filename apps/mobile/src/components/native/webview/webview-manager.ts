@@ -1,3 +1,4 @@
+import type { ReaderStylePayload } from "@follow/shared/settings/reader-style"
 import type { SpotlightRule } from "@follow/shared/spotlight"
 import type { EntryModel } from "@follow/store/entry/types"
 
@@ -54,6 +55,13 @@ export const WebViewManager = {
    */
   setReaderRenderInlineStyle(value: boolean): void {
     SharedWebViewModule.dispatch?.("setReaderRenderInlineStyle", JSON.stringify(value))
+  },
+
+  /**
+   * Set reader typography (font family, line height and text color)
+   */
+  setReaderStyle(style: ReaderStylePayload): void {
+    SharedWebViewModule.dispatch?.("setReaderStyle", JSON.stringify(style))
   },
 
   /**

@@ -102,7 +102,9 @@ export const useSession = (options?: { enabled?: boolean }) => {
     },
     enabled: options?.enabled ?? true,
     refetchOnMount: true,
-    staleTime: 0,
+    // Start-up fetches the session through the same query, and several components mount this
+    // hook right after. A short window lets them share that result; a login reloads the page.
+    staleTime: 60_000,
     meta: {
       persist: true,
     },

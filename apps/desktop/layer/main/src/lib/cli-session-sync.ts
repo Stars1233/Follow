@@ -6,6 +6,7 @@ import { promisify } from "node:util"
 import { env } from "@follow/shared/env.desktop"
 import { createAuthRequestOriginHeaders, createDesktopAPIHeaders } from "@follow/utils/headers"
 import PKG from "@pkg"
+import { net } from "electron"
 import { join } from "pathe"
 
 import { WindowManager } from "~/manager/window"
@@ -16,6 +17,7 @@ import {
   getManagedAuthCookies,
   getPreferredSessionTokenCookie,
 } from "./auth-cookies"
+import { describeCliCommand, redactCliSecrets } from "./cli-command"
 import { resolveCliSessionToken } from "./cli-login-token"
 
 const execFileAsync = promisify(execFile)
@@ -57,11 +59,24 @@ export const getCliInstallCommand = () => `npx --yes ${CLI_NPX_PACKAGE_SPEC} --h
 export const getCliLoginCommand = () => `npx --yes ${CLI_NPX_PACKAGE_SPEC} login --token <token>`
 
 const runCliCommand = async (args: string[]) => {
-  await execFileAsync(getNpxCommand(), ["--yes", CLI_NPX_PACKAGE_SPEC, ...args], {
-    windowsHide: true,
-    timeout: 120_000,
-    maxBuffer: 1024 * 1024,
-  })
+  const fullArgs = ["--yes", CLI_NPX_PACKAGE_SPEC, ...args]
+  try {
+    await execFileAsync(getNpxCommand(), fullArgs, {
+      windowsHide: true,
+      timeout: 120_000,
+      maxBuffer: 1024 * 1024,
+    })
+  } catch (error) {
+    // The original error carries the whole command line, token included. Callers log it,
+    // so replace it with one that says what failed without repeating the secret.
+    const output =
+      error && typeof error === "object" && "stderr" in error && typeof error.stderr === "string"
+        ? error.stderr.trim()
+        : ""
+    throw new Error(
+      `${describeCliCommand(getNpxCommand(), fullArgs)} failed${output ? `: ${redactCliSecrets(output, fullArgs)}` : ""}`,
+    )
+  }
 }
 
 export const isCliRunnerAvailable = async (): Promise<boolean> => {
@@ -115,8 +130,9 @@ const generateOneTimeTokenFromCurrentSession = async (): Promise<string | undefi
     return undefined
   }
 
-  const response = await fetch(`${env.VITE_API_URL}/better-auth/one-time-token/generate`, {
+  const response = await net.fetch(`${env.VITE_API_URL}/better-auth/one-time-token/generate`, {
     method: "GET",
+    credentials: "omit",
     headers: getCliSyncRequestHeaders({
       Cookie: cookieHeader,
     }),
@@ -133,8 +149,9 @@ const generateOneTimeTokenFromCurrentSession = async (): Promise<string | undefi
 const resolveSessionTokenFromOneTimeToken = async (
   oneTimeToken: string,
 ): Promise<string | undefined> => {
-  const response = await fetch(`${env.VITE_API_URL}/better-auth/one-time-token/apply`, {
+  const response = await net.fetch(`${env.VITE_API_URL}/better-auth/one-time-token/apply`, {
     method: "POST",
+    credentials: "omit",
     headers: getCliSyncRequestHeaders({
       "content-type": "application/json",
     }),

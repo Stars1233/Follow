@@ -11,28 +11,15 @@ import Animated, {
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { ReAnimatedPressable } from "@/src/components/common/AnimatedComponents"
-import { BlurEffect } from "@/src/components/common/BlurEffect"
 import { getDefaultHeaderHeight } from "@/src/components/layouts/utils"
 import { SetNavigationHeaderHeightContext } from "@/src/components/layouts/views/NavigationHeaderContext"
 import { Search2CuteReIcon } from "@/src/icons/search_2_cute_re"
 import { useScreenIsInSheetModal } from "@/src/lib/navigation/hooks"
-import { ScreenItemContext } from "@/src/lib/navigation/ScreenItemContext"
 import { accentColor, useColor } from "@/src/theme/colors"
 
 import { useSearchPageContext, useSearchPageScrollContainerAnimatedX } from "./ctx"
 import { SearchTabBar } from "./SearchTabBar"
 
-const DynamicBlurEffect = () => {
-  const { reAnimatedScrollY } = use(ScreenItemContext)
-  const blurStyle = useAnimatedStyle(() => ({
-    opacity: Math.max(0, Math.min(1, reAnimatedScrollY.value / 50)),
-  }))
-  return (
-    <Animated.View className="absolute inset-0 flex-1" style={blurStyle} pointerEvents={"none"}>
-      <BlurEffect />
-    </Animated.View>
-  )
-}
 export const DiscoverHeader = () => {
   const frame = useSafeAreaFrame()
   const insets = useSafeAreaInsets()
@@ -52,13 +39,11 @@ export const DiscoverHeader = () => {
         minHeight: headerHeight,
         paddingTop: insets.top,
       }}
-      className="relative"
+      className="relative bg-system-background"
       onLayout={(e) => {
         setHeaderHeight(e.nativeEvent.layout.height)
       }}
     >
-      <DynamicBlurEffect />
-
       <View style={styles.header}>
         <SearchInput />
       </View>
@@ -80,7 +65,7 @@ const SearchInput = () => {
   const marginRight = useSharedValue(0)
   const cancelButtonTranslateX = useSharedValue(20)
   const [tempSearchValue, setTempSearchValue] = useState(searchValue)
-  const focusOrHasValue = isFocused || searchValue || tempSearchValue
+  const focusOrHasValue = !!(isFocused || searchValue || tempSearchValue)
   useEffect(() => {
     if (focusOrHasValue) {
       skeletonOpacity.value = withTiming(0, {
@@ -155,6 +140,7 @@ const SearchInput = () => {
     marginRight: marginRight.value,
   }))
   const cancelButtonAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: placeholderOpacity.value,
     transform: [
       {
         translateX: cancelButtonTranslateX.value,
@@ -191,11 +177,11 @@ const SearchInput = () => {
           onSubmitEditing={() => {
             setSearchValue(tempSearchValue)
           }}
-          defaultValue={searchValue}
+          value={tempSearchValue}
           cursorColor={accentColor}
           selectionColor={accentColor}
           style={styles.searchInput}
-          className="text-text"
+          className="text-label"
           onFocus={() => setIsFocused(true)}
           onBlur={() => !searchValue && !tempSearchValue && setIsFocused(false)}
           onChangeText={(text) => {
@@ -217,6 +203,7 @@ const SearchInput = () => {
 
       <ReAnimatedPressable
         testID="discover-search-cancel"
+        pointerEvents={focusOrHasValue ? "auto" : "none"}
         hitSlop={10}
         onPress={() => {
           setIsFocused(false)

@@ -1,7 +1,12 @@
 import "./global.css"
 import "./polyfill"
 
-import { apiContext, authClientContext, queryClientContext } from "@follow/store/context"
+import {
+  apiContext,
+  authClientContext,
+  queryClientContext,
+  syncApiContext,
+} from "@follow/store/context"
 import { registerRootComponent } from "expo"
 import { Image } from "expo-image"
 import { LinearGradient } from "expo-linear-gradient"
@@ -36,6 +41,7 @@ global.ELECTRON = false
 authClientContext.provide(authClient)
 queryClientContext.provide(queryClient)
 apiContext.provide(followApi)
+syncApiContext.provide(followApi.sync)
 
 enableFreeze(true)
 ;[Image, LinearGradient].forEach((Component) => {

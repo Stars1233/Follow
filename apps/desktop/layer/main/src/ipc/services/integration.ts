@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs"
 import fsp from "node:fs/promises"
 
-import { dialog, shell } from "electron"
+import { dialog, net, shell } from "electron"
 import { IpcMethod, IpcService } from "electron-ipc-decorator"
 import path from "pathe"
 
@@ -61,8 +61,9 @@ interface CustomFetchInput {
 
 export async function saveMediaToEagle(input: SaveToEagleInput): Promise<any> {
   try {
-    const res = await fetch("http://localhost:41595/api/item/addFromURLs", {
+    const res = await net.fetch("http://localhost:41595/api/item/addFromURLs", {
       method: "POST",
+      credentials: "omit",
       headers: {
         "Content-Type": "application/json",
       },
@@ -216,8 +217,10 @@ ${content}
       }
     }
 
-    const res = await fetch(`${host}/api/v2/auth/login`, {
+    const res = await net.fetch(`${host}/api/v2/auth/login`, {
       method: "POST",
+      // The session id is read from `set-cookie` and kept by the app; Chromium must not keep it too.
+      credentials: "omit",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
       },
@@ -244,7 +247,7 @@ ${content}
     if (!sid) {
       return "Not logged in to qBittorrent"
     }
-    const res = await fetch(`${host}/api/v2/auth/check`, {
+    const res = await net.fetch(`${host}/api/v2/auth/check`, {
       method: "GET",
       headers: {
         Cookie: `SID=${sid}`,
@@ -264,7 +267,7 @@ ${content}
     if (!sid) {
       return "Not logged in to qBittorrent"
     }
-    const res = await fetch(`${host}/api/v2/torrents/add`, {
+    const res = await net.fetch(`${host}/api/v2/torrents/add`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -337,9 +340,10 @@ ${content}
 
       logger.debug(`[CustomFetch:${requestId}] Sending request...`)
 
-      const response = await fetch(url, {
+      const response = await net.fetch(url, {
         method,
         headers,
+        credentials: "omit",
         body: body && ["POST", "PUT", "PATCH"].includes(method.toUpperCase()) ? body : undefined,
         signal: controller.signal,
       })

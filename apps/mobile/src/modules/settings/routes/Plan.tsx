@@ -950,7 +950,7 @@ const PlanCard = ({
       </View>
 
       <View className="mt-4 gap-2">
-        {features.map(([featureKey, value]: readonly [PropertyKey, unknown]) => {
+        {features.map(([featureKey, value]) => {
           const formattedValue = formatFeatureValue(featureKey, value, t)
           const showValue = !(typeof value === "boolean" && value)
           return (

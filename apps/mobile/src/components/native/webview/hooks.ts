@@ -1,3 +1,4 @@
+import { resolveReaderTextColor } from "@follow/shared/settings/reader-style"
 import { useEntry } from "@follow/store/entry/hooks"
 import { useEntryTranslation } from "@follow/store/translation/hooks"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -65,6 +66,9 @@ export function useWebViewEntry({
   const customFontScale = useUISettingKey("fontScale")
   const useDifferentFontSizeForContent = useUISettingKey("useDifferentFontSizeForContent")
   const mobileContentFontSize = useUISettingKey("mobileContentFontSize")
+  const readerFontFamily = useUISettingKey("readerFontFamily")
+  const contentLineHeight = useUISettingKey("contentLineHeight")
+  const readerTextColor = useUISettingKey("readerTextColor")
 
   useEffect(() => {
     const fontScale = useSystemFontScaling ? PixelRatio.getFontScale() : customFontScale
@@ -118,6 +122,14 @@ export function useWebViewEntry({
   useEffect(() => {
     WebViewManager.setCodeTheme(codeThemeLight, codeThemeDark)
   }, [codeThemeLight, codeThemeDark])
+
+  useEffect(() => {
+    WebViewManager.setReaderStyle({
+      fontFamily: readerFontFamily || "inherit",
+      lineHeight: contentLineHeight,
+      textColor: resolveReaderTextColor(readerTextColor),
+    })
+  }, [readerFontFamily, contentLineHeight, readerTextColor])
 
   useEffect(() => {
     WebViewManager.setSpotlights(spotlightRules)

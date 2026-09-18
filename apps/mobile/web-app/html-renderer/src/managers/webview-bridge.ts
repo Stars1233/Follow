@@ -1,3 +1,5 @@
+import type { ReaderStylePayload } from "@follow/shared/settings/reader-style"
+
 import type { EntryModel, SpotlightState } from "../../types"
 import {
   codeThemeDarkAtom,
@@ -5,6 +7,7 @@ import {
   entryAtom,
   noMediaAtom,
   readerRenderInlineStyleAtom,
+  readerStyleAtom,
   spotlightAtom,
 } from "../atoms"
 
@@ -60,6 +63,13 @@ export class WebViewBridgeManager {
   }
 
   /**
+   * Set reader typography: font family, line height and text color
+   */
+  setReaderStyle = (value: ReaderStylePayload | null) => {
+    this.store.set(readerStyleAtom, value && typeof value === "object" ? value : null)
+  }
+
+  /**
    * Set root font size for the WebView
    */
   setRootFontSize = (size = 16) => {
@@ -87,6 +97,7 @@ export class WebViewBridgeManager {
         setCodeTheme: this.setCodeTheme,
         setReaderRenderInlineStyle: this.setReaderRenderInlineStyle,
         setNoMedia: this.setNoMedia,
+        setReaderStyle: this.setReaderStyle,
         setRootFontSize: this.setRootFontSize,
       } as const
 

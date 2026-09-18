@@ -3,10 +3,12 @@ import { IN_ELECTRON } from "@follow/shared/constants"
 import { env } from "@follow/shared/env.desktop"
 import { whoami } from "@follow/store/user/getters"
 import { userActions } from "@follow/store/user/store"
+import { trackApiConnection } from "@follow/utils/api-connection"
 import { createDesktopAPIHeaders } from "@follow/utils/headers"
 import { FollowClient } from "@follow-app/client-sdk"
 import PKG from "@pkg"
 
+import { setApiUnreachable } from "~/atoms/api-connection"
 import { setLoginModalShow } from "~/atoms/user"
 
 import { ipcServices } from "./client"
@@ -15,6 +17,13 @@ import { getAuthSessionToken, getClientId, getSessionId } from "./client-session
 const isElectronRuntime = () => {
   return IN_ELECTRON || (typeof window !== "undefined" && !!window.electron)
 }
+
+/**
+ * The main process hands the body over as text, so a `204 No Content` arrives as an empty
+ * string. `Response` refuses any body, even an empty one, for these statuses; passing one
+ * threw, and a thrown fetch counts as "the server cannot be reached".
+ */
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304])
 
 const fetchWithElectronAuth = async (request: Request) => {
   const requestURL = new URL(request.url)
@@ -48,7 +57,7 @@ const fetchWithElectronAuth = async (request: Request) => {
     url: request.url,
   })
 
-  return new Response(response.body, {
+  return new Response(NULL_BODY_STATUSES.has(response.status) ? null : response.body, {
     headers: response.headers,
     status: response.status,
     statusText: response.statusText,
@@ -69,6 +78,7 @@ export const followClient = new FollowClient({
 })
 
 export const followApi = followClient.api
+
 followClient.addRequestInterceptor(async (ctx) => {
   const { options } = ctx
   const headers = new Headers(options.headers)
@@ -120,4 +130,23 @@ followClient.addResponseInterceptor(async ({ response }) => {
   }
 
   return response
+})
+
+/**
+ * Whether the API answers at all, checked the way ordinary requests travel (through the main
+ * process in Electron). Any HTTP status counts as an answer; the endpoint needs no session.
+ */
+const probeApiReachability = async () => {
+  const request = new Request(new URL("/status/configs", env.VITE_API_URL), {
+    cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
+  })
+  await fetchWithElectronAuth(request)
+  return true
+}
+
+trackApiConnection(followClient, {
+  probe: probeApiReachability,
+  onUnreachable: () => setApiUnreachable(true),
+  onRecovered: () => setApiUnreachable(false),
 })

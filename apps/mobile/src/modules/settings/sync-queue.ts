@@ -5,6 +5,8 @@ import {
   pickSpotlightPayloadFromRemoteAppearance,
   toAppearanceSpotlightPayload,
 } from "@follow/shared/spotlight"
+import { registerSyncModel } from "@follow/store/sync/model-registry"
+import type { SyncAction } from "@follow/store/sync/types"
 import { whoami } from "@follow/store/user/getters"
 import { tracker } from "@follow/tracker"
 import { isEmptyObject, jotaiStore, sleep } from "@follow/utils"
@@ -536,7 +538,11 @@ class SettingSyncQueue {
     })
     return promise
   }
-  async syncLocal() {
+  /**
+   * @param rethrow let a failed request reach the caller. The sync engine needs it: a load
+   * that did not happen must not count as done.
+   */
+  async syncLocal(options?: { rethrow?: boolean }) {
     const currentUserId = this.getCurrentUserId()
     if (!currentUserId) return
 
@@ -552,15 +558,23 @@ class SettingSyncQueue {
       }
 
       this.reportSyncError("syncLocal", error)
+      if (options?.rethrow) throw error
       return
     }
 
     if (!remoteSettings) return
     if (__DEV__) {
-      // eslint-disable-next-line no-console
       console.log("remote settings:", remoteSettings)
     }
 
+    this.applyRemoteSettings(remoteSettings)
+  }
+
+  /** Merge settings from the server into the local ones; the newer side wins per domain. */
+  applyRemoteSettings(remoteSettings: {
+    settings: Record<string, any>
+    updated: Record<string, string>
+  }) {
     if (isEmptyObject(remoteSettings.settings)) return
 
     for (const tab in remoteSettings.settings) {
@@ -601,6 +615,41 @@ class SettingSyncQueue {
       }
     }
   }
+
+  /**
+   * One settings tab changed on the server, reported by the sync engine's change log. The
+   * action carries what `GET /settings` would return for that tab, so it goes through the
+   * same last-writer-wins merge as a full sync.
+   */
+  async applyRemoteChange(action: SyncAction) {
+    if (action.action !== "U" || !action.modelId) return
+    const tab = action.modelId as RemoteSettingsTab
+    // Tabs this app does not sync, such as the desktop AI settings.
+    if (!(tab in remoteTabToDomainMap)) return
+    const data = action.data as { payload?: Record<string, unknown>; updatedAt?: string } | null
+    if (!data?.updatedAt) return
+
+    // A local change to this tab is still waiting to be sent. It wins for now, and the
+    // server's answer to it is logged with both changes merged.
+    if (this.queue.some((item) => remoteTabMap[item.tab] === tab)) return
+
+    if (!data.payload) {
+      await this.syncLocal()
+      return
+    }
+
+    this.applyRemoteSettings({
+      settings: { [tab]: data.payload },
+      updated: { [tab]: data.updatedAt },
+    })
+  }
 }
 
 export const settingSyncQueue = new SettingSyncQueue()
+
+// Registered at module load, before the sync engine starts: once the settings were loaded in
+// full, launches no longer request them and other devices' changes arrive through the log.
+registerSyncModel("setting", {
+  bootstrap: () => settingSyncQueue.syncLocal({ rethrow: true }),
+  apply: (action) => settingSyncQueue.applyRemoteChange(action),
+})

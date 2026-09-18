@@ -88,8 +88,11 @@ export const updateProxy = () => {
     logger.warn("undici only supports http and https proxy, skipping undici proxy setup")
     return
   }
-  // Currently, Session.setProxy is not working for native fetch, which is used by readability.
-  // So we need to set proxy for native fetch manually, refer to https://stackoverflow.com/a/76503362/14676508
+  // The app's own requests go through `net.fetch` and follow the session proxy above. Node's
+  // native fetch, still used by third-party code such as the readability package, knows
+  // nothing about it, so an explicit proxy is handed to undici as well; the system proxy
+  // cannot be, which is why those requests only follow a proxy set in the app.
+  // Refer to https://stackoverflow.com/a/76503362/14676508
   const dispatcher = new ProxyAgent({ uri: new URL(proxyUri).toString() })
   setGlobalDispatcher(dispatcher)
 }

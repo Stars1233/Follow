@@ -3,10 +3,10 @@ import { cn } from "@follow/utils"
 import { useSetAtom, useStore } from "jotai"
 import type { PropsWithChildren } from "react"
 import { use, useImperativeHandle, useLayoutEffect, useRef, useState } from "react"
-import type { ScrollView, ScrollViewProps, StyleProp, ViewStyle } from "react-native"
+import type { ScrollView, ScrollViewProps, StyleProp, ViewProps, ViewStyle } from "react-native"
 import { findNodeHandle, View } from "react-native"
-import type { SharedValue } from "react-native-reanimated"
-import { runOnJS, useAnimatedScrollHandler } from "react-native-reanimated"
+import type { AnimatedProps, SharedValue } from "react-native-reanimated"
+import Animated, { runOnJS, useAnimatedScrollHandler } from "react-native-reanimated"
 import type { ReanimatedScrollEvent } from "react-native-reanimated/lib/typescript/hook/commonTypes"
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context"
 
@@ -171,16 +171,22 @@ export const NavigationBlurEffectHeaderView = ({
   headerHideableBottom,
   headerHideableBottomHeight,
   headerTitleAbsolute,
+  containerStyle,
   ...props
 }: InternalNavigationHeaderProps & {
   blurThreshold?: number
   headerHideableBottom?: () => React.ReactNode
   headerHideableBottomHeight?: number
   headerTitleAbsolute?: boolean
+  /**
+   * Animated style applied to the absolutely positioned header container,
+   * e.g. to slide the header away while reading.
+   */
+  containerStyle?: AnimatedProps<ViewProps>["style"]
 }) => {
   const hideableBottom = headerHideableBottom?.()
   return (
-    <View className="absolute inset-x-0 top-0 z-[99]">
+    <Animated.View className="absolute inset-x-0 top-0 z-[99]" style={containerStyle}>
       <InternalNavigationHeader
         title={props.title}
         headerRight={props.headerRight}
@@ -192,7 +198,7 @@ export const NavigationBlurEffectHeaderView = ({
         promptBeforeLeave={props.promptBeforeLeave}
         isLoading={props.isLoading}
       />
-    </View>
+    </Animated.View>
   )
 }
 

@@ -38,6 +38,8 @@ import m0034 from "./0034_curly_darkstar.sql"
 import m0035 from "./0035_last_valeria_richards.sql"
 import m0036 from "./0036_entry_tag_summary.sql"
 import m0037 from "./0037_bored_the_leader.sql"
+import m0038 from "./0038_sync_transactions.sql"
+import m0039 from "./0039_sync_meta.sql"
 import journal from "./meta/_journal.json"
 
 export default {
@@ -81,5 +83,7 @@ export default {
     m0035,
     m0036,
     m0037,
+    m0038,
+    m0039,
   },
 }

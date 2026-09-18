@@ -1,5 +1,5 @@
+import TrackPlayer, { PlayerCommand } from "@rntp/player"
 import { AppState, Platform } from "react-native"
-import TrackPlayer, { Capability, Event } from "react-native-track-player"
 
 export let PlayerRegistered = false
 
@@ -16,14 +16,7 @@ function waitForForeground(): Promise<void> {
 }
 
 export async function initializePlayer() {
-  TrackPlayer.registerPlaybackService(() => async () => {
-    TrackPlayer.addEventListener(Event.RemotePlay, () => TrackPlayer.play())
-    TrackPlayer.addEventListener(Event.RemotePause, () => TrackPlayer.pause())
-    TrackPlayer.addEventListener(Event.RemoteStop, () => TrackPlayer.stop())
-    TrackPlayer.addEventListener(Event.RemoteNext, () => TrackPlayer.skipToNext())
-    TrackPlayer.addEventListener(Event.RemotePrevious, () => TrackPlayer.skipToPrevious())
-    TrackPlayer.addEventListener(Event.RemoteSeek, ({ position }) => TrackPlayer.seekTo(position))
-  })
+  if (PlayerRegistered) return
 
   // On Android, setupPlayer must be called in the foreground to avoid
   // ForegroundServiceStartNotAllowedException
@@ -31,38 +24,22 @@ export async function initializePlayer() {
     await waitForForeground()
   }
 
-  const setup = async (retry = 10) => {
-    if (retry <= 0) {
-      console.error("Failed to setup player after multiple attempts")
-      return
-    }
-    try {
-      await TrackPlayer.setupPlayer()
-      PlayerRegistered = true
-    } catch (_err) {
-      const err = _err as Error & { code?: string }
-      console.error("Failed to setup player:", "Code:", err.code, err.message)
+  if (PlayerRegistered) return
 
-      if (err.code === "android_cannot_setup_player_in_background") {
-        await waitForForeground()
-        await setup(retry - 1)
-      }
-    }
+  try {
+    TrackPlayer.setupPlayer()
+    TrackPlayer.setCommands({
+      capabilities: [
+        PlayerCommand.PlayPause,
+        PlayerCommand.Next,
+        PlayerCommand.Previous,
+        PlayerCommand.Stop,
+        PlayerCommand.Seek,
+      ],
+      handling: "native",
+    })
+    PlayerRegistered = true
+  } catch (error) {
+    console.error("Failed to setup player:", error)
   }
-
-  await setup()
-
-  if (!PlayerRegistered) return
-
-  await TrackPlayer.updateOptions({
-    capabilities: [
-      Capability.Play,
-      Capability.Pause,
-      Capability.SkipToNext,
-      Capability.SkipToPrevious,
-      Capability.Stop,
-      Capability.SeekTo,
-    ],
-    compactCapabilities: [Capability.Play, Capability.Pause],
-  })
 }

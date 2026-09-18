@@ -29,6 +29,7 @@ import { useNavigation } from "@/src/lib/navigation/hooks"
 import { NavigationSitemapRegistry } from "@/src/lib/navigation/sitemap/registry"
 import type { NavigationControllerView } from "@/src/lib/navigation/types"
 import { setEnvProfile, useEnvProfile } from "@/src/lib/proxy-env"
+import { reloadApp } from "@/src/lib/reload-app"
 import { toast } from "@/src/lib/toast"
 import { showUpgradeRequiredDialog } from "@/src/modules/dialogs/UpgradeRequiredDialog"
 import {
@@ -108,7 +109,7 @@ export const DebugScreen: NavigationControllerView = () => {
                 async onPress() {
                   const dbPath = getDbPath()
                   await FileSystem.deleteAsync(dbPath)
-                  await expo.reloadAppAsync("Clear Sqlite Data")
+                  await reloadApp("Clear Sqlite Data")
                 },
               },
             ])
@@ -121,7 +122,7 @@ export const DebugScreen: NavigationControllerView = () => {
       items: [
         {
           title: "Reload App",
-          onPress: () => expo.reloadAppAsync("Reload App"),
+          onPress: () => reloadApp("Reload App"),
         },
         {
           title: "Loading",

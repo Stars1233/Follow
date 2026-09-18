@@ -267,6 +267,20 @@
       "when": 1768727702017,
       "tag": "0037_bored_the_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1789568569391,
+      "tag": "0038_sync_transactions",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1789572921040,
+      "tag": "0039_sync_meta",
+      "breakpoints": true
     }
   ]
 }

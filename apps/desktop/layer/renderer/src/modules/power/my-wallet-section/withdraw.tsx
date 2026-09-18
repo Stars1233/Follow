@@ -27,6 +27,7 @@ import { z } from "zod"
 
 import { useModalStack } from "~/components/ui/modal/stacked/hooks"
 import { followClient } from "~/lib/api-client"
+import type { LegacyWithdrawRequest } from "~/lib/wallet-compat"
 import { useTOTPModalWrapper } from "~/modules/profile/hooks"
 import { Balance } from "~/modules/wallet/balance"
 import { useWallet, wallet as walletActions } from "~/queries/wallet"
@@ -86,12 +87,13 @@ const WithdrawModalContent = ({ dismiss }: { dismiss: () => void }) => {
       TOTPCode?: string
     }) => {
       const amountBigInt = from(amount, 18)[0]
-      await followClient.api.wallets.transactions.withdraw({
+      const payload: LegacyWithdrawRequest = {
         address,
         amount: amountBigInt.toString(),
         toRss3,
         TOTPCode,
-      })
+      }
+      await followClient.api.wallets.transactions.withdraw(payload)
     },
   })
   const present = useTOTPModalWrapper(mutation.mutateAsync, { force: true })

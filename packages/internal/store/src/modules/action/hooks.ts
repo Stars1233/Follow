@@ -9,7 +9,12 @@ import { actionActions, actionSyncService, useActionStore } from "./store"
 export const usePrefetchActions = () => {
   return useQuery({
     queryKey: ["action", "rules"],
-    queryFn: () => actionSyncService.fetchRules(),
+    queryFn: async () => {
+      // With the sync engine running the rules come from the local database and the change
+      // log; they are only requested when the engine cannot provide them.
+      await actionSyncService.ensureRules()
+      return null
+    },
   })
 }
 

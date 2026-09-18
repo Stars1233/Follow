@@ -2,6 +2,7 @@ import type { UserRole } from "@follow/constants"
 import type { UserSchema } from "@follow/database/schemas/types"
 import { UserService } from "@follow/database/services/user"
 import type { AuthUser } from "@follow-app/client-sdk"
+import { FollowAPIError } from "@follow-app/client-sdk"
 import { create, indexedResolver, windowScheduler } from "@yornaath/batshit"
 
 import { api, authClient } from "../../context"
@@ -69,7 +70,10 @@ class UserSyncService {
     const res = await api()
       .auth.getSession()
       .catch((err) => {
-        if (err?.message.includes("Failed to fetch")) {
+        // Only a 401 tells that the session is gone. Connection failures, timeouts and
+        // server errors must not sign the user out locally.
+        const isUnauthenticated = err instanceof FollowAPIError && err.status === 401
+        if (!isUnauthenticated) {
           throw err
         }
         return null

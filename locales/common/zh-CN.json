@@ -1,4 +1,5 @@
 {
+  "app.api_unreachable": "无法连接到服务器，请检查你的网络连接。",
   "app.copied_to_clipboard": "已复制到剪贴板",
   "discover.category.all": "全部",
   "discover.category.anime": "二次元",

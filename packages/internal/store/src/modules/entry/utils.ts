@@ -123,3 +123,86 @@ export const fallbackReturn: UseEntriesReturn = {
   hasNextPage: false,
   error: null,
 }
+
+interface EntriesPageLike {
+  data?: Array<{ entries: { id: string } }> | null
+}
+
+interface LoadedEntriesPages<TPage, TParam> {
+  pages: TPage[]
+  pageParams: TParam[]
+}
+
+const getPageEntryIds = (page: EntriesPageLike) =>
+  (page.data ?? []).map((item) => item.entries.id).filter((id) => typeof id === "string")
+
+/**
+ * Put a freshly fetched first page in front of the pages that are already loaded.
+ *
+ * The fresh page is authoritative for the range it covers, so everything loaded up to the
+ * deepest entry both sides share is replaced by it and the rest is kept. Without a shared
+ * entry there may be a gap between the two, and only the fresh page is kept: the user loads
+ * the rest by scrolling, exactly like after opening the list.
+ */
+export const mergeEntriesHead = <TPage extends EntriesPageLike, TParam>(
+  current: LoadedEntriesPages<TPage, TParam> | undefined,
+  head: TPage,
+): LoadedEntriesPages<TPage, TParam> | undefined => {
+  if (!current || current.pages.length === 0) return current
+
+  const headIds = getPageEntryIds(head)
+  const headIdSet = new Set(headIds)
+  const loadedIds = current.pages.flatMap((page) => getPageEntryIds(page))
+
+  let lastSharedIndex = -1
+  loadedIds.forEach((id, index) => {
+    if (headIdSet.has(id)) lastSharedIndex = index
+  })
+
+  const firstPageParam = current.pageParams[0] as TParam
+  if (lastSharedIndex === -1) {
+    return loadedIds.length === 0 && headIds.length === 0
+      ? current
+      : { pages: [head], pageParams: [firstPageParam] }
+  }
+
+  if (headIds.every((id, index) => loadedIds[index] === id)) {
+    // Nothing new: keep the cached object so nothing re-renders.
+    return current
+  }
+
+  const covered = new Set(loadedIds.slice(0, lastSharedIndex + 1))
+  const pages: TPage[] = []
+  const pageParams: TParam[] = []
+  current.pages.forEach((page, index) => {
+    const rest = (page.data ?? []).filter(
+      (item) => !covered.has(item.entries.id) && !headIdSet.has(item.entries.id),
+    )
+    if (index === 0) {
+      pages.push({ ...head, data: [...(head.data ?? []), ...rest] })
+      pageParams.push(firstPageParam)
+    } else if (rest.length > 0) {
+      pages.push({ ...page, data: rest })
+      pageParams.push(current.pageParams[index] as TParam)
+    }
+  })
+
+  return { pages, pageParams }
+}
+
+/**
+ * Drop the empty pages at the end of a list. An oldest-first list that was scrolled to its
+ * end holds one: it is what told the list there was nothing more. Removing it lets the list
+ * ask for the entries after its last one again, which is where new entries arrive.
+ */
+export const trimTrailingEmptyPages = <TPage extends EntriesPageLike, TParam>(
+  current: LoadedEntriesPages<TPage, TParam> | undefined,
+): LoadedEntriesPages<TPage, TParam> | undefined => {
+  if (!current) return current
+  let end = current.pages.length
+  while (end > 1 && (current.pages[end - 1]!.data?.length ?? 0) === 0) {
+    end -= 1
+  }
+  if (end === current.pages.length) return current
+  return { pages: current.pages.slice(0, end), pageParams: current.pageParams.slice(0, end) }
+}

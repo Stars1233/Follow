@@ -48,6 +48,13 @@ class ListActions implements Hydratable, Resetable {
     })
   }
 
+  removeInSession(listId: ListId) {
+    immerSet((draft) => {
+      delete draft.lists[listId]
+      draft.listIds = draft.listIds.filter((id) => id !== listId)
+    })
+  }
+
   async upsertMany(lists: ListModel[]) {
     const tx = createTransaction()
     tx.store(() => {

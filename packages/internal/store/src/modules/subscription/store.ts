@@ -9,6 +9,7 @@ import { createImmerSetter, createTransaction, createZustandStore } from "../../
 import { apiMorph } from "../../morph/api"
 import { dbStoreMorph } from "../../morph/db-store"
 import { buildSubscriptionDbId, storeDbMorph } from "../../morph/store-db"
+import { catchUpThroughEngine, ensureSyncedThroughEngine } from "../../sync/sync-status"
 import { invalidateEntriesQuery } from "../entry/hooks"
 import { getFeedById } from "../feed/getter"
 import { feedActions } from "../feed/store"
@@ -153,6 +154,63 @@ class SubscriptionActions implements Hydratable, Resetable {
     await tx.run()
   }
 
+  /**
+   * Apply a partial update that the server already confirmed, keeping the per-view indexes
+   * consistent. Undefined fields in the patch are ignored.
+   */
+  patchInSession(storeId: string, patch: Partial<SubscriptionModel>) {
+    immerSet((draft) => {
+      const current = draft.data[storeId]
+      if (!current) return
+
+      const definedPatch = Object.fromEntries(
+        Object.entries(patch).filter(([, value]) => value !== undefined),
+      ) as Partial<SubscriptionModel>
+      const next: SubscriptionModel = { ...current, ...definedPatch }
+
+      if (current.type === "feed" && current.feedId) {
+        if (current.view !== next.view) {
+          draft.feedIdByView[current.view]?.delete(current.feedId)
+          draft.feedIdByView[next.view]?.add(current.feedId)
+        }
+        if (next.category) {
+          draft.categories[next.view]?.add(next.category)
+        }
+      }
+
+      if (current.type === "list" && current.listId && current.view !== next.view) {
+        draft.listIdByView[current.view]?.delete(current.listId)
+        draft.listIdByView[next.view]?.add(current.listId)
+      }
+
+      draft.data[storeId] = next
+    })
+  }
+
+  /** Drop subscriptions from memory together with their index entries. */
+  removeManyInSession(storeIds: string[]) {
+    immerSet((draft) => {
+      for (const id of storeIds) {
+        const subscription = draft.data[id]
+        if (!subscription) continue
+        draft.subscriptionIdSet.delete(getSubscriptionDBId(subscription))
+        if (subscription.feedId) {
+          draft.feedIdByView[subscription.view]!.delete(subscription.feedId)
+          draft.feedIdByView[FeedViewType.All]!.delete(subscription.feedId)
+        }
+        if (subscription.listId) {
+          draft.listIdByView[subscription.view]!.delete(subscription.listId)
+          draft.listIdByView[FeedViewType.All]!.delete(subscription.listId)
+        }
+        if (subscription.category) {
+          draft.categories[subscription.view]!.delete(subscription.category)
+          draft.categories[FeedViewType.All]!.delete(subscription.category)
+        }
+        delete draft.data[id]
+      }
+    })
+  }
+
   resetByView(view: FeedViewType) {
     immerSet((draft) => {
       draft.feedIdByView[view] = new Set()
@@ -220,6 +278,21 @@ class SubscriptionSyncService {
       subscriptions,
       feeds: collections.feeds,
     }
+  }
+
+  /**
+   * Bring the subscriptions up to date after a user gesture or a server-side change. The
+   * delta feed does it when the sync engine runs; the full list is the fallback.
+   *
+   * Pass `afterServerChange` when the server just changed subscriptions outside the
+   * transaction queue (an import): fresh change-log rows are hidden for about a second.
+   */
+  async refresh(view?: FeedViewType, options?: { afterServerChange?: boolean }) {
+    const synced = options?.afterServerChange
+      ? await catchUpThroughEngine()
+      : await ensureSyncedThroughEngine()
+    if (synced) return
+    await this.fetch(view)
   }
 
   async edit(subscription: SubscriptionModel) {
@@ -338,26 +411,7 @@ class SubscriptionSyncService {
     const tx = createTransaction(subscriptionList)
 
     tx.store(() => {
-      immerSet((draft) => {
-        for (const id of normalizedIds) {
-          const subscription = draft.data[id]
-          if (!subscription) continue
-          draft.subscriptionIdSet.delete(getSubscriptionDBId(subscription))
-          if (subscription.feedId) {
-            draft.feedIdByView[subscription.view]!.delete(subscription.feedId)
-            draft.feedIdByView[FeedViewType.All]!.delete(subscription.feedId)
-          }
-          if (subscription.listId) {
-            draft.listIdByView[subscription.view]!.delete(subscription.listId)
-            draft.listIdByView[FeedViewType.All]!.delete(subscription.listId)
-          }
-          if (subscription.category) {
-            draft.categories[subscription.view]!.delete(subscription.category)
-            draft.categories[FeedViewType.All]!.delete(subscription.category)
-          }
-          delete draft.data[id]
-        }
-      })
+      subscriptionActions.removeManyInSession(normalizedIds)
     })
 
     tx.request(async () => {

@@ -1,6 +1,7 @@
 import { env } from "@follow/shared/env.desktop"
 import { createDesktopAPIHeaders } from "@follow/utils/headers"
 import PKG, { runtimeVersion as configuredRuntimeVersion, version as appVersion } from "@pkg"
+import { net } from "electron"
 
 import { getCurrentRendererManifest, isRendererManifestUsable } from "~/updater/hot-updater"
 
@@ -41,7 +42,7 @@ export const buildDesktopOtaHeaders = (includeRenderer = false): Record<string, 
 }
 
 export const fetchDesktopManifest = async (): Promise<DesktopManifestResponse | null> => {
-  const response = await fetch(new URL("/manifest", env.VITE_OTA_URL), {
+  const response = await net.fetch(new URL("/manifest", env.VITE_OTA_URL).toString(), {
     headers: buildDesktopOtaHeaders(true),
     cache: "no-store",
   })
@@ -58,7 +59,7 @@ export const fetchDesktopManifest = async (): Promise<DesktopManifestResponse | 
 }
 
 export const fetchDesktopPolicy = async (): Promise<DesktopPolicyResponse> => {
-  const response = await fetch(new URL("/policy", env.VITE_OTA_URL), {
+  const response = await net.fetch(new URL("/policy", env.VITE_OTA_URL).toString(), {
     headers: buildDesktopOtaHeaders(false),
     cache: "no-store",
   })

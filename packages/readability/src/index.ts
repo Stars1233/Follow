@@ -30,8 +30,17 @@ async function decodeResponseBodyChars(res: Response) {
   }
 }
 
-export async function readability(baseUrl: string) {
-  const dirtyDocumentString = await fetch(baseUrl, {
+export interface ReadabilityOptions {
+  /**
+   * How to fetch the page. Electron's main process passes `net.fetch` so the request follows
+   * the app's proxy settings; by default the runtime's own `fetch` is used.
+   */
+  fetch?: (input: string, init?: RequestInit) => Promise<Response>
+}
+
+export async function readability(baseUrl: string, options?: ReadabilityOptions) {
+  const fetchPage = options?.fetch ?? fetch
+  const dirtyDocumentString = await fetchPage(baseUrl, {
     headers: {
       "User-Agent": userAgents,
       Accept: "text/html",

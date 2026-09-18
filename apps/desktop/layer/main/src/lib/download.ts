@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises"
 import { pipeline } from "node:stream"
 import { promisify } from "node:util"
 
+import { net } from "electron"
 import ky from "ky"
 import path from "pathe"
 
@@ -17,8 +18,12 @@ export interface DownloadOptions {
   onLog?: (message: string) => void
 }
 
+/** Chromium's network stack, so downloads follow the app's proxy settings like everything else. */
+const fetchThroughChromium: NonNullable<Parameters<typeof ky.get>[1]>["fetch"] = (input, init) =>
+  net.fetch(input instanceof Request ? input : input.toString(), init)
+
 export async function downloadFile(url: string, dest: string) {
-  const res = await fetch(url)
+  const res = await net.fetch(url)
 
   // Check whether it responds successfully.
   if (!res.ok) {
@@ -44,6 +49,7 @@ export async function downloadFileWithProgress(options: DownloadOptions): Promis
 
     // Use ky with onDownloadProgress
     const response = await ky.get(url, {
+      fetch: fetchThroughChromium,
       onDownloadProgress: (progress) => {
         const now = Date.now()
         // Call progress callback every 500ms to avoid spam

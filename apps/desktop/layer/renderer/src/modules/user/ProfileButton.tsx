@@ -44,10 +44,11 @@ export const ProfileButton: FC<ProfileButtonProps> = memo((props) => {
   const presentUserProfile = usePresentUserProfileModal("dialog")
   const { t } = useTranslation()
   const aiEnabled = useFeature("ai")
-  const wallet = useWallet()
-  const hasPowerToken = !!wallet.data?.[0]?.powerToken
-
   const [dropdown, setDropdown] = useState(false)
+  // The wallet only decides whether the menu lists the wallet entry, so it is not requested
+  // before the menu is opened. The cached answer keeps the entry stable afterwards.
+  const wallet = useWallet({ enabled: dropdown })
+  const hasPowerToken = !!wallet.data?.[0]?.powerToken
 
   const navigate = useNavigate()
 
@@ -55,7 +56,22 @@ export const ProfileButton: FC<ProfileButtonProps> = memo((props) => {
   const isInMASReview = useIsInMASReview()
 
   if (status !== "authenticated" && !user) {
-    return <LoginButton {...props} />
+    return (
+      <>
+        <ActionButton
+          data-testid="guest-settings-button"
+          tooltip={t("user_button.preferences")}
+          shortcut="$mod+,"
+          disableTriggerShortcut
+          onClick={() => {
+            settingModalPresent()
+          }}
+        >
+          <i className="i-mgc-settings-7-cute-re size-5 text-text-secondary" />
+        </ActionButton>
+        <LoginButton {...props} />
+      </>
+    )
   }
 
   return (

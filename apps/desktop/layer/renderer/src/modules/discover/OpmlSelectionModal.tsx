@@ -41,7 +41,8 @@ export const OpmlSelectionModal = ({
       return data
     },
     onSuccess: (data) => {
-      subscriptionSyncService.fetch()
+      // The import is logged per feed, so the delta feed delivers exactly what was added.
+      void subscriptionSyncService.refresh(undefined, { afterServerChange: true })
 
       const { successfulItems, conflictItems, parsedErrorItems } = data
 

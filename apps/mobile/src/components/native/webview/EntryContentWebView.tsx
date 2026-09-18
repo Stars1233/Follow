@@ -1,11 +1,11 @@
 import { EventBus } from "@follow/utils/event-bus"
 import { Portal } from "@gorhom/portal"
+import TrackPlayer from "@rntp/player"
 import { useAtom } from "jotai"
 import * as React from "react"
 import { useCallback, useEffect } from "react"
 import { Dimensions, StyleSheet, View } from "react-native"
 import { runOnJS, runOnUI } from "react-native-reanimated"
-import TrackPlayer from "react-native-track-player"
 
 import { player } from "@/src/lib/player"
 
@@ -38,7 +38,7 @@ export function EntryContentWebView(props: EntryContentWebViewProps) {
 
   const handleSeekAudio = useCallback(
     async (e: AudioSeekEvent) => {
-      const activeTrack = await TrackPlayer.getActiveTrack()
+      const activeTrack = TrackPlayer.getActiveMediaItem()
       const entryAudio = entryInWebview?.attachments?.find((attachment) =>
         attachment.mime_type?.startsWith("audio/"),
       )
@@ -46,7 +46,7 @@ export function EntryContentWebView(props: EntryContentWebViewProps) {
         console.warn("Failed to seek audio! No audio attachment found")
         return
       }
-      if (activeTrack?.url !== entryAudio.url) {
+      if (activeTrack?.mediaId !== entryAudio.url) {
         await player.play({
           url: entryAudio.url || "",
           title: entryInWebview?.title || "Unknown Title",

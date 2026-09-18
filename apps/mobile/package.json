@@ -1,6 +1,6 @@
 {
   "name": "@follow/mobile",
-  "version": "0.5.9",
+  "version": "0.5.10",
   "private": true,
   "main": "src/main.tsx",
   "scripts": {
@@ -51,6 +51,7 @@
     "@react-native-masked-view/masked-view": "0.3.2",
     "@react-native-menu/menu": "2.0.0",
     "@react-native-picker/picker": "2.11.4",
+    "@rntp/player": "5.9.2",
     "@shikijs/themes": "4.3.1",
     "@shopify/flash-list": "2.3.2",
     "@tanstack/query-sync-storage-persister": "5.101.2",
@@ -134,7 +135,6 @@
     "react-native-screens": "4.25.2",
     "react-native-sheet-transitions": "0.1.2",
     "react-native-svg": "15.15.5",
-    "react-native-track-player": "4.1.2",
     "react-native-uikit-colors": "0.6.2",
     "react-native-volume-manager": "2.0.8",
     "react-native-web": "0.21.2",
@@ -190,7 +190,7 @@
       "reactNativeDirectoryCheck": {
         "enabled": true,
         "exclude": [
-          "react-native-track-player",
+          "@rntp/player",
           "follow-native",
           "react-native-color-matrix-image-filters"
         ],

@@ -3,7 +3,7 @@ require File.join(File.dirname(`node --print "require.resolve('react-native/pack
 
 require 'json'
 podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties.json'))) rescue {}
-# @generated begin follow-rnfb-static-framework - expo prebuild (DO NOT MODIFY) sync-f5cdc2d7bd4a6aab702edc22de7a304de10bf620
+# @generated begin follow-rnfb-static-framework
 $RNFirebaseAsStaticFramework = true
 # @generated end follow-rnfb-static-framework
 
@@ -62,7 +62,7 @@ target 'Folo' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
-# @generated begin follow-rnfb-ios-compat - expo prebuild (DO NOT MODIFY) sync-de86f3d31943ea65e37ffe7ebba2fc96cce92e86
+# @generated begin follow-rnfb-ios-compat
     installer.pods_project.targets.each do |target|
       if target.name.start_with?('RNFB')
         target.build_configurations.each do |config|
@@ -78,6 +78,19 @@ target 'Folo' do
         definitions = [definitions] unless definitions.is_a?(Array)
         definitions << 'FMT_USE_CONSTEVAL=0' unless definitions.include?('FMT_USE_CONSTEVAL=0')
         config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = definitions
+      end
+    end
+
+    # Xcode 27 refuses deployment targets below iOS 15, and its Swift compiler rejects iOS 16
+    # APIs in pods that still declare an older floor (react-native-ios-context-menu, for one).
+    # The app itself requires ios.deploymentTarget, so every pod target is raised to at least that.
+    deployment_target = (podfile_properties['ios.deploymentTarget'] || '16.4').to_f
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        current_target = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f
+        if current_target < deployment_target
+          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = deployment_target.to_s
+        end
       end
     end
 # @generated end follow-rnfb-ios-compat

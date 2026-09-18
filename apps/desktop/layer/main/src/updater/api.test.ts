@@ -6,6 +6,14 @@ const { getCurrentRendererManifestMock } = vi.hoisted(() => ({
   ),
 }))
 
+const { netFetchMock } = vi.hoisted(() => ({ netFetchMock: vi.fn() }))
+
+vi.mock("electron", () => ({
+  net: {
+    fetch: netFetchMock,
+  },
+}))
+
 vi.mock("@follow/shared/env.desktop", () => ({
   env: {
     VITE_OTA_URL: "https://ota.folo.is",
@@ -55,19 +63,19 @@ vi.mock("~/updater/hot-updater", () => ({
 
 describe("desktop updater api", () => {
   beforeEach(() => {
-    vi.stubGlobal("fetch", vi.fn())
+    netFetchMock.mockReset()
     getCurrentRendererManifestMock.mockReturnValue(null)
   })
 
   it("returns null when desktop manifest responds 204", async () => {
-    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }))
+    netFetchMock.mockResolvedValue(new Response(null, { status: 204 }))
 
     const { fetchDesktopManifest } = await import("./api")
     const result = await fetchDesktopManifest()
 
     expect(result).toBeNull()
-    expect(fetch).toHaveBeenCalledWith(
-      new URL("/manifest", "https://ota.folo.is"),
+    expect(netFetchMock).toHaveBeenCalledWith(
+      "https://ota.folo.is/manifest",
       expect.objectContaining({
         headers: expect.objectContaining({
           "X-App-Platform": "desktop/windows/exe",
@@ -81,7 +89,7 @@ describe("desktop updater api", () => {
   })
 
   it("parses desktop manifest responses", async () => {
-    vi.mocked(fetch).mockResolvedValue(
+    netFetchMock.mockResolvedValue(
       new Response(
         JSON.stringify({
           id: "manifest-id",
@@ -120,13 +128,13 @@ describe("desktop updater api", () => {
       version: "0.6.4",
     })
 
-    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }))
+    netFetchMock.mockResolvedValue(new Response(null, { status: 204 }))
 
     const { fetchDesktopManifest } = await import("./api")
     await fetchDesktopManifest()
 
-    expect(fetch).toHaveBeenCalledWith(
-      new URL("/manifest", "https://ota.folo.is"),
+    expect(netFetchMock).toHaveBeenCalledWith(
+      "https://ota.folo.is/manifest",
       expect.objectContaining({
         headers: expect.objectContaining({
           "X-App-Renderer-Version": "1.5.0",
@@ -136,7 +144,7 @@ describe("desktop updater api", () => {
   })
 
   it("parses desktop policy responses", async () => {
-    vi.mocked(fetch).mockResolvedValue(
+    netFetchMock.mockResolvedValue(
       new Response(
         JSON.stringify({
           action: "block",

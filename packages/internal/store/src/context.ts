@@ -1,6 +1,7 @@
 import type { AuthClient } from "@follow/shared/auth"
 import type { QueryClient } from "@tanstack/react-query"
 
+import type { SyncAPI } from "./sync/types"
 import type { FollowAPI } from "./types"
 
 const NO_VALUE_DEFAULT = Symbol("NO_VALUE_DEFAULT")
@@ -29,7 +30,9 @@ function createJSContext<T>() {
 export const apiContext = createJSContext<FollowAPI>()
 export const authClientContext = createJSContext<AuthClient>()
 export const queryClientContext = createJSContext<QueryClient>()
+export const syncApiContext = createJSContext<SyncAPI>()
 
 export const api = apiContext.consumer
+export const syncApi = syncApiContext.consumer
 export const authClient = authClientContext.consumer
 export const queryClient = queryClientContext.consumer

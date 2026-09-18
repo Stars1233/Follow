@@ -20,6 +20,7 @@ import { LightboxStateProvider } from "../components/ui/lightbox/lightboxState"
 import { queryClient } from "../lib/query-client"
 import { TtsStreamProvider } from "../modules/player/TtsStreamProvider"
 import { TimelineSelectorDragProgressProvider } from "../modules/screen/atoms"
+import { ApiConnectionNotice } from "./ApiConnectionNotice"
 import { AppleIAPProvider } from "./AppleIAPProvider"
 import { FontScalingProvider } from "./FontScalingProvider"
 import { MigrationProvider } from "./migration"
@@ -53,6 +54,7 @@ export const RootProviders = ({ children }: { children: ReactNode }) => {
       <ComposeContextProvider contexts={contexts}>
         {children}
         <ServerConfigsLoader />
+        <ApiConnectionNotice />
         <TtsStreamProvider />
       </ComposeContextProvider>
     </View>

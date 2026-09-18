@@ -1,6 +1,12 @@
+import { jotaiStore } from "@follow/utils"
+import TrackPlayer, {
+  PlaybackState,
+  useActiveMediaItem,
+  useIsPlaying as useNativeIsPlaying,
+  usePlaybackState,
+} from "@rntp/player"
 import { atom, useAtom } from "jotai"
 import { useCallback, useEffect, useSyncExternalStore } from "react"
-import TrackPlayer, { useActiveTrack, useIsPlaying } from "react-native-track-player"
 
 import { PlayerRegistered } from "../initialize/player"
 import { ttsStreamController } from "../modules/player/tts-stream-controller"
@@ -8,27 +14,52 @@ import { toast } from "./toast"
 
 export type SimpleMediaState = "playing" | "paused" | "loading"
 
-/**
- * Learn more https://rntp.dev/docs/guides/play-button
- */
-export function useAudioPlayState(audioUrl?: string): SimpleMediaState {
-  const playState = useIsPlaying()
-  const activeTrack = useActiveTrack()
-  const playingUrl = activeTrack?.url
+const pausedByUserAtom = atom(false)
 
-  const isCurrentTrack = !audioUrl || playingUrl === audioUrl
-  if (!playingUrl || !isCurrentTrack) {
+function usePlaybackStatus() {
+  const playing = useNativeIsPlaying()
+  const playbackState = usePlaybackState()
+  const [pausedByUser, setPausedByUser] = useAtom(pausedByUserAtom)
+
+  useEffect(() => {
+    if (playing) setPausedByUser(false)
+  }, [playing, setPausedByUser])
+
+  // V5 reports actual audio output, so buffering must remain separately pausable.
+  const buffering = playbackState === PlaybackState.Buffering && !pausedByUser
+  return { playing: playing || buffering, buffering }
+}
+
+export function useIsPlaying() {
+  return usePlaybackStatus().playing
+}
+
+export function useAudioPlayState(audioUrl?: string): SimpleMediaState {
+  const { playing, buffering } = usePlaybackStatus()
+  const activeTrack = useActiveMediaItem()
+  const playingMediaId = activeTrack?.mediaId
+
+  const isCurrentTrack = !audioUrl || playingMediaId === audioUrl
+  if (!playingMediaId || !isCurrentTrack) {
     // By default the audio should be in "paused" state
     return "paused"
   }
 
-  if (playState.bufferingDuringPlay === true) {
+  if (buffering) {
     return "loading"
   }
-  return playState.playing ? "playing" : "paused"
+  return playing ? "playing" : "paused"
 }
 
 class Player {
+  isPlaying() {
+    return (
+      TrackPlayer.isPlaying() ||
+      (TrackPlayer.getPlaybackState() === PlaybackState.Buffering &&
+        !jotaiStore.get(pausedByUserAtom))
+    )
+  }
+
   async play(newTrack?: {
     url: string
     title?: string | null
@@ -37,44 +68,50 @@ class Player {
   }) {
     if (!PlayerRegistered) {
       toast.error("Player is not registered. Please wait for the app to initialize.")
+      return
     }
     if (newTrack) {
-      const activeTrack = await TrackPlayer.getActiveTrack()
-      if (activeTrack?.url !== newTrack.url) {
+      const activeTrack = TrackPlayer.getActiveMediaItem()
+      if (activeTrack?.mediaId !== newTrack.url) {
         const { url, title, artist, artwork } = newTrack
 
-        await TrackPlayer.load({
+        // Keep identity stable when native playback normalizes local file URLs.
+        TrackPlayer.setMediaItem({
+          mediaId: url,
           url,
           title: title ?? "Unknown Title",
           artist: artist ?? "Unknown Artist",
-          artwork: artwork ?? undefined,
+          artworkUrl: artwork ?? undefined,
         })
       }
     }
 
-    await TrackPlayer.play()
+    TrackPlayer.play()
+    jotaiStore.set(pausedByUserAtom, false)
   }
 
   async pause() {
-    await TrackPlayer.pause()
+    TrackPlayer.pause()
+    jotaiStore.set(pausedByUserAtom, true)
   }
 
   async reset() {
-    await TrackPlayer.reset()
+    TrackPlayer.clear()
+    jotaiStore.set(pausedByUserAtom, true)
   }
 
   async seekBy(offset: number) {
-    await TrackPlayer.seekBy(offset)
+    TrackPlayer.seekBy(offset)
   }
 
   async seekTo(position: number) {
-    await TrackPlayer.seekTo(position)
+    TrackPlayer.seekTo(position)
   }
 }
 
 export const player = new Player()
 
-export { useActiveTrack, useIsPlaying, useProgress } from "react-native-track-player"
+export { useProgress } from "@rntp/player"
 
 export interface ActivePlayable {
   artwork?: string | null
@@ -89,7 +126,7 @@ export function useTtsStreamPlayback() {
 }
 
 export function useActivePlayable(): ActivePlayable | null {
-  const activeTrack = useActiveTrack()
+  const activeTrack = useActiveMediaItem()
   const ttsStream = useTtsStreamPlayback()
 
   if (ttsStream.entryId) {
@@ -107,7 +144,7 @@ export function useActivePlayable(): ActivePlayable | null {
   }
 
   return {
-    artwork: activeTrack.artwork,
+    artwork: typeof activeTrack.artworkUrl === "string" ? activeTrack.artworkUrl : undefined,
     artist: activeTrack.artist,
     entryId: null,
     kind: "track-player",
@@ -124,8 +161,8 @@ export function useRate() {
   const [rate, setRate] = useAtom(rateAtom)
 
   useEffect(() => {
-    async function getRate() {
-      const rate = await TrackPlayer.getRate()
+    function getRate() {
+      const rate = TrackPlayer.getPlaybackSpeed()
       if (allowedRate.includes(rate)) {
         setRate(rate as Rate)
       } else {
@@ -137,9 +174,9 @@ export function useRate() {
   }, [setRate])
 
   const setRateAndSave = useCallback(
-    async (rate: Rate) => {
+    (rate: Rate) => {
       if (allowedRate.includes(rate)) {
-        await TrackPlayer.setRate(rate)
+        TrackPlayer.setPlaybackSpeed(rate)
         setRate(rate)
       }
     },

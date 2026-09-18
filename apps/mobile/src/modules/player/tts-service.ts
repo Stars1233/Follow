@@ -1,6 +1,8 @@
 import { fetch as expoFetch } from "expo/fetch"
 import { Directory, File, Paths } from "expo-file-system"
 
+import { trackFetch } from "@/src/lib/network-activity"
+
 import { fetchTtsVoices as fetchTtsVoicesCore, requestTtsBytes } from "./tts-core"
 
 export { DEFAULT_TTS_VOICE, getEntryTtsText, TTS_SERVICE_URL, type TtsVoice } from "./tts-core"
@@ -44,7 +46,7 @@ const createCacheFile = (cacheKey: string): TtsCacheFile => {
 
 const defaultDependencies: TtsDependencies = {
   createCacheFile,
-  fetch: expoFetch,
+  fetch: trackFetch(expoFetch),
 }
 
 export const fetchTtsVoices = async (

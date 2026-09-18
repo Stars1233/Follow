@@ -16,6 +16,18 @@ export const invalidateUserSession = () => {
   })
 }
 
+/**
+ * Fetch the session once, through the query cache. App start-up needs the session before any
+ * component is mounted; going through the cache lets every `whoamiQueryKey` observer that
+ * mounts afterwards reuse this result instead of asking for the session again.
+ */
+export const fetchSessionUser = () =>
+  queryClient().fetchQuery({
+    queryKey: whoamiQueryKey,
+    queryFn: () => userSyncService.whoami(),
+    staleTime: 0,
+  })
+
 export const usePrefetchSessionUser = () => {
   const query = useQuery({
     queryKey: whoamiQueryKey,

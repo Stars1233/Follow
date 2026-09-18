@@ -1,4 +1,5 @@
 {
+  "app.api_unreachable": "サーバーに接続できません。ネットワーク接続を確認してください。",
   "app.copied_to_clipboard": "クリップボードにコピーしました",
   "discover.category.all": "すべて",
   "discover.category.anime": "ACG",

@@ -11,7 +11,7 @@ appId: is.follow
       id: settings-sign-out
     direction: DOWN
     timeout: 15000
-    centerElement: false
+    centerElement: true
 - tapOn:
     id: settings-sign-out
 - tapOn:

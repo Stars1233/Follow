@@ -13,14 +13,36 @@ export type AppTipDismissChangeDetail = {
 
 export const useNewUserGuideState = () => {
   const user = useWhoami()
-  const { data: remoteSettings, isLoading } = useAuthQuery(settings.get(), {})
 
   const dismissKey = useMemo(() => (user ? `${APP_TIP_STORAGE_PREFIX}:${user.id}` : null), [user])
   const [hasDismissed, setHasDismissed] = useState(() => readDismissed(dismissKey))
+  // An account that has synced settings once can never count as new again. Remembering that
+  // keeps this hook, which is mounted with the entry list, from requesting `/settings` on
+  // every launch just to find out that there is nothing to show.
+  const existingUserKey = dismissKey ? `${dismissKey}:existing` : null
+  const [isKnownExistingUser, setIsKnownExistingUser] = useState(() =>
+    readDismissed(existingUserKey),
+  )
+
+  const { data: remoteSettings, isLoading } = useAuthQuery(settings.get(), {
+    ...((!user || hasDismissed || isKnownExistingUser) && { enabled: false }),
+  })
 
   useEffect(() => {
     setHasDismissed(readDismissed(dismissKey))
-  }, [dismissKey])
+    setIsKnownExistingUser(readDismissed(existingUserKey))
+  }, [dismissKey, existingUserKey])
+
+  useEffect(() => {
+    if (!existingUserKey || !remoteSettings) return
+    if (Object.keys(remoteSettings.updated ?? {}).length === 0) return
+    try {
+      window.localStorage.setItem(existingUserKey, "1")
+    } catch {
+      /* empty */
+    }
+    setIsKnownExistingUser(true)
+  }, [existingUserKey, remoteSettings])
 
   useEffect(() => {
     if (!dismissKey || typeof window === "undefined") return
