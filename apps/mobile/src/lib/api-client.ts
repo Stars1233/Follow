@@ -13,13 +13,17 @@ import { getAuthStateRevision, getCookie, getLastAuthStateChangeAt } from "./aut
 import { getClientId, getSessionId } from "./client-session"
 import { getUserAgent } from "./native/user-agent"
 import { destination } from "./navigation/biz/Destination"
+import { trackFetch } from "./network-activity"
 import { proxyEnv } from "./proxy-env"
+
+// Tracked so a runtime reload can wait for the requests to settle first (see `reload-app.ts`).
+const trackedFetch = trackFetch(fetch)
 
 export const followClient = new FollowClient({
   credentials: "omit",
   timeout: 60_000,
   baseURL: proxyEnv.API_URL,
-  fetch: async (input, options = {}) => fetch(input.toString(), options as any) as any,
+  fetch: async (input, options = {}) => trackedFetch(input.toString(), options as any) as any,
 })
 
 export const followApi = followClient.api
@@ -127,7 +131,7 @@ followClient.addResponseInterceptor(async (ctx) => {
 
 /** Whether the API answers at all. Any HTTP status counts; the endpoint needs no session. */
 const probeApiReachability = async () => {
-  await fetch(`${proxyEnv.API_URL}/status/configs`, {
+  await trackedFetch(`${proxyEnv.API_URL}/status/configs`, {
     signal: AbortSignal.timeout(10_000),
   })
   return true

@@ -25,6 +25,7 @@ import { getUserAgent } from "./native/user-agent"
 import { Navigation } from "./navigation/Navigation"
 import { getEnvProfile, proxyEnv } from "./proxy-env"
 import { queryClient } from "./query-client"
+import { reloadApp } from "./reload-app"
 import { safeSecureStore } from "./secure-store"
 
 const storagePrefix = "follow_auth"
@@ -253,7 +254,7 @@ export const signOut = async () => {
   await refreshSessionQueries()
   const dbPath = getDbPath()
   await FileSystem.deleteAsync(dbPath, { idempotent: true })
-  await expo.reloadAppAsync("User sign out")
+  await reloadApp("User sign out")
 }
 
 export const deleteUser = async ({ TOTPCode }: { TOTPCode?: string }) => {
