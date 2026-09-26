@@ -545,8 +545,8 @@ importers:
         specifier: 4.0.0
         version: 4.0.0(electron@44.4.3)
       '@eneris/push-receiver':
-        specifier: 4.3.1
-        version: 4.3.1
+        specifier: 4.4.0
+        version: 4.4.0
       '@follow-app/client-sdk':
         specifier: 0.3.96
         version: 0.3.96(79e875ec96b251dcbd6980579966a6eb)
@@ -4507,8 +4507,8 @@ packages:
   '@emotion/memoize@0.9.0':
     resolution: {integrity: sha512-30FAj7/EoJ5mwVPOWhAyCX+FPfMDrVecJAM+Iw9NRoSl4BBAQeqj4cApHHUXOVvIPgLVDsCFoz/hGD+5QQD1GQ==}
 
-  '@eneris/push-receiver@4.3.1':
-    resolution: {integrity: sha512-oaRLVl7cNlmgxq+fOUhwe13yf0D4j0wjDqMXTtZWSkWXM2hchhd3n7JBg3mW4kpbrgZNuuTi35njoGCt843K2A==}
+  '@eneris/push-receiver@4.4.0':
+    resolution: {integrity: sha512-53ZYUV92Glt1+igZH1HjJI5ATHA96EmFd6U9XW9dNnzS5gv/DKoNbU0MAJ+FXnTNTKdaqXwAxyFBeOMdKEk+Pg==}
     engines: {node: '>=20'}
 
   '@epic-web/invariant@1.0.0':
@@ -23296,7 +23296,7 @@ snapshots:
 
   '@emotion/memoize@0.9.0': {}
 
-  '@eneris/push-receiver@4.3.1':
+  '@eneris/push-receiver@4.4.0':
     dependencies:
       http_ece: 1.2.1
       jsonwebtoken: 9.0.3
