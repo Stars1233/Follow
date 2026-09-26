@@ -32,6 +32,7 @@ import { EntryContentContext, useEntryContentContext } from "@/src/modules/entry
 import { EntryAISummary } from "@/src/modules/entry-content/EntryAISummary"
 import { EntryNavigationHeader } from "@/src/modules/entry-content/EntryNavigationHeader"
 import { usePullUpToNext } from "@/src/modules/entry-content/pull-up-navigation/use-pull-up-navigation"
+import { usePreferredFeedTitle } from "@/src/modules/feed/feed-title"
 
 import { EntrySocialTitle, EntryTitle } from "../../../../modules/entry-content/EntryTitle"
 
@@ -204,6 +205,7 @@ const EntryInfo = ({ entryId }: { entryId: string }) => {
   }))
   const isLoggedIn = useIsLoggedIn()
   const feed = useFeedById(entry?.feedId)
+  const feedTitle = usePreferredFeedTitle(entry?.feedId)
   const secondaryLabelColor = useColor("secondaryLabel")
   const readCount = useEntryReadHistory(entryId, 20, isLoggedIn)?.entryReadHistories?.readCount ?? 0
   const hideRecentReader = useUISettingKey("hideRecentReader")
@@ -215,7 +217,7 @@ const EntryInfo = ({ entryId }: { entryId: string }) => {
         <View className="flex shrink flex-row items-center gap-2">
           <FeedIcon feed={feed} />
           <Text className="shrink text-xs font-medium leading-tight text-label" numberOfLines={1}>
-            {feed.title?.trim()}
+            {feedTitle?.trim()}
           </Text>
         </View>
       )}

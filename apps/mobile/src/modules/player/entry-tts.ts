@@ -1,10 +1,10 @@
 import { getEntry } from "@follow/store/entry/getter"
-import { getFeedById } from "@follow/store/feed/getter"
 import TrackPlayer from "@rntp/player"
 
 import { getGeneralSettings } from "@/src/atoms/settings/general"
 import { toastFetchError } from "@/src/lib/error-parser"
 import { player } from "@/src/lib/player"
+import { getPreferredFeedTitle } from "@/src/modules/feed/feed-title"
 
 import { getEntryTtsText, requestTtsFile } from "./tts-service"
 import { ttsStreamController } from "./tts-stream-controller"
@@ -66,11 +66,11 @@ export const playEntryTts = async (
     }
 
     const { voice } = getGeneralSettings()
-    const feed = getFeedById(entry.feedId)
+    const artist = getPreferredFeedTitle(entry.feedId) ?? "Folo"
     try {
       await ttsStreamController.play({
         artwork: entry.media?.find((media) => media.type === "photo")?.url ?? null,
-        artist: feed?.title ?? "Folo",
+        artist,
         entryId,
         text,
         title: entry.title || toastTitle,
@@ -92,7 +92,7 @@ export const playEntryTts = async (
 
     await player.play({
       artwork: entry.media?.find((media) => media.type === "photo")?.url ?? undefined,
-      artist: feed?.title ?? "Folo",
+      artist,
       title: entry.title || toastTitle,
       url: trackUrl,
     })

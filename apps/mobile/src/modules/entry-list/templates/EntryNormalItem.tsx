@@ -25,6 +25,7 @@ import { useNavigation } from "@/src/lib/navigation/hooks"
 import { isIOS } from "@/src/lib/platform"
 import { player, useAudioPlayState } from "@/src/lib/player"
 import { toast } from "@/src/lib/toast"
+import { usePreferredFeedTitle } from "@/src/modules/feed/feed-title"
 import { EntryDetailScreen } from "@/src/screens/(stack)/entries/[entryId]/EntryDetailScreen"
 
 import { EntryItemContextMenu } from "../../context-menu/entry"
@@ -69,6 +70,7 @@ export const EntryNormalItem = memo(
     })
     const from = getInboxFrom(entry)
     const feed = useFeedById(entry?.feedId as string)
+    const feedTitle = usePreferredFeedTitle(entry?.feedId)
     const navigation = useNavigation()
     const handlePress = useCallback(() => {
       if (entry) {
@@ -124,7 +126,7 @@ export const EntryNormalItem = memo(
             <View className="mb-1 flex-row items-center gap-1.5 pr-2">
               <FeedIcon fallback feed={feed} size={view === FeedViewType.Notifications ? 14 : 16} />
               <Text numberOfLines={1} className="shrink text-xs font-medium text-secondary-label">
-                {feed?.title || from || "Unknown feed"}
+                {feedTitle || from || "Unknown feed"}
               </Text>
               <Text className="text-xs font-medium text-tertiary-label">·</Text>
               {estimatedMins ? (
@@ -179,6 +181,7 @@ const ThumbnailImage = ({ entryId }: { entryId: string }) => {
     title: state.title,
   }))
   const feed = useFeedById(entry?.feedId as string)
+  const feedTitle = usePreferredFeedTitle(entry?.feedId)
   const thumbnailRatio = useUISettingKey("thumbnailRatio")
   const mediaModel = entry?.media?.find(
     (media) => media.type === "photo" || (media.type === "video" && media.preview_image_url),
@@ -216,14 +219,14 @@ const ThumbnailImage = ({ entryId }: { entryId: string }) => {
       player.play({
         url: audio.url,
         title: entry?.title,
-        artist: feed?.title,
+        artist: feedTitle,
         artwork: image,
       })
     } catch (error) {
       console.error("Error playing audio:", error)
       toast.error("Failed to play audio")
     }
-  }, [audio, audioState, entry?.title, feed?.title, image, video, videoPlayer])
+  }, [audio, audioState, entry?.title, feedTitle, image, video, videoPlayer])
   const [imageError, setImageError] = useState(audio && !image)
   const handleImageError = useCallback(() => {
     setImageError(true)

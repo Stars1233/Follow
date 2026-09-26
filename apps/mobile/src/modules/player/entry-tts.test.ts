@@ -18,8 +18,8 @@ vi.mock("@follow/store/entry/getter", () => ({
   getEntry: () => ({ feedId: "feed-1", title: "Article", media: [] }),
 }))
 
-vi.mock("@follow/store/feed/getter", () => ({
-  getFeedById: () => ({ title: "Feed" }),
+vi.mock("@/src/modules/feed/feed-title", () => ({
+  getPreferredFeedTitle: () => "Custom Feed",
 }))
 
 vi.mock("@rntp/player", () => ({
@@ -70,7 +70,9 @@ describe("playEntryTts", () => {
     await playEntryTts("entry-1", options)
 
     expect(mocks.requestTtsFile).toHaveBeenCalledOnce()
-    expect(mocks.play).toHaveBeenCalledWith(expect.objectContaining({ url: mocks.fileUrl }))
+    expect(mocks.play).toHaveBeenCalledWith(
+      expect.objectContaining({ url: mocks.fileUrl, artist: "Custom Feed" }),
+    )
 
     mocks.activeItem = {
       mediaId: mocks.fileUrl,
