@@ -1,6 +1,6 @@
 import type { Env } from "../env"
 import type { MirroredFile } from "./archive"
-import { buildMirroredAssetKey, extractMirroredFiles } from "./archive"
+import { buildMirroredAssetKey, mirrorArchiveFiles } from "./archive"
 import { KV_KEYS } from "./constants"
 import { fetchGitHubReleases, toOtaReleaseSummaries } from "./github"
 import type { BinaryPolicyRecord, LatestReleasePointerRecord } from "./kv"
@@ -176,39 +176,111 @@ async function runSyncStoreVersions(env: Env) {
 }
 
 async function persistReleaseSummaries(env: Env, releases: ReleaseSummary[]) {
+  const failures: unknown[] = []
+
+  // One broken release must not keep the others from syncing. Failures still fail the run, so the
+  // stored ETag and lastSuccessAt stay put and the next run retries them.
   for (const releaseSummary of releases) {
-    const release = await fetchReleaseMetadata(releaseSummary.metadataUrl, env)
-
-    if (release.releaseKind === "ota") {
-      if (!releaseSummary.archiveUrl) {
-        throw new Error(
-          `Missing OTA archive asset for ${release.product} release ${release.releaseVersion}`,
-        )
-      }
-
-      const archiveBuffer = await fetchArchiveBuffer(releaseSummary.archiveUrl, env)
-      const files = await extractMirroredFiles({
-        release,
-        archiveBuffer,
-      })
-
-      await mirrorReleaseToStorage(
-        {
-          release,
-          files,
-        },
-        {
-          kv: env.OTA_KV,
-          bucket: env.OTA_BUCKET,
-        },
-      )
-
-      continue
+    try {
+      await persistReleaseSummary(env, releaseSummary)
+    } catch (error) {
+      console.error(`[ota] Failed to sync release ${releaseSummary.tag}`, error)
+      failures.push(error)
     }
+  }
 
+  if (failures.length > 0) {
+    throw new AggregateError(failures, `Failed to sync ${failures.length} release(s)`)
+  }
+}
+
+async function persistReleaseSummary(env: Env, releaseSummary: ReleaseSummary) {
+  const release = await fetchReleaseMetadata(releaseSummary.metadataUrl, env)
+
+  if (release.releaseKind !== "ota") {
     await putReleaseRecord(env.OTA_KV, release.product, release.releaseVersion, release)
     await putLatestPolicyRecord(env.OTA_KV, release)
+    return
   }
+
+  if (!releaseSummary.archiveUrl) {
+    throw new Error(
+      `Missing OTA archive asset for ${release.product} release ${release.releaseVersion}`,
+    )
+  }
+
+  // The release list changes whenever download counts do, so every run sees the same releases
+  // again. Re-downloading and extracting every archive each time exceeded the Worker memory
+  // limit, so skip releases whose mirrored files are already in R2.
+  const storedRelease = await getStoredReleaseRecord(env.OTA_KV, release)
+
+  if (storedRelease && JSON.stringify(storedRelease) === JSON.stringify(release)) {
+    // Still reconcile the pointers in case an earlier run stopped right after storing the record
+    await advanceLatestPointers(release, listMirroredKeys(release), env.OTA_KV)
+    return
+  }
+
+  if (storedRelease && hasSameMirroredFiles(storedRelease, release)) {
+    await recordMirroredRelease(release, listMirroredKeys(release), env.OTA_KV)
+    return
+  }
+
+  const archiveStream = await fetchArchiveStream(releaseSummary.archiveUrl, env)
+  const mirroredKeys = await mirrorArchiveFiles({
+    release,
+    archive: archiveStream,
+    onFile: (file) => putMirroredFiles(env.OTA_BUCKET, [file]),
+  })
+
+  await recordMirroredRelease(release, mirroredKeys, env.OTA_KV)
+}
+
+async function getStoredReleaseRecord(kv: KVNamespace, release: OtaRelease) {
+  const storedRelease = await kv.get<unknown>(
+    KV_KEYS.release(release.product, release.releaseVersion),
+    "json",
+  )
+  const parsed = otaReleaseSchema.safeParse(storedRelease)
+
+  return parsed.success ? parsed.data : null
+}
+
+function hasSameMirroredFiles(left: OtaRelease, right: OtaRelease) {
+  return (
+    JSON.stringify(listMirroredFileDigests(left)) === JSON.stringify(listMirroredFileDigests(right))
+  )
+}
+
+function listMirroredFileDigests(release: OtaRelease) {
+  const platforms = release.platforms as OtaProjectedPlatforms
+
+  return OTA_PLATFORMS.flatMap((platform) => {
+    const platformPayload = platforms[platform]
+
+    if (!platformPayload) {
+      return []
+    }
+
+    return [platformPayload.launchAsset, ...platformPayload.assets]
+      .map((asset) => `${buildMirroredAssetKey(release, platform, asset.path)}:${asset.sha256}`)
+      .sort()
+  })
+}
+
+function listMirroredKeys(release: OtaRelease) {
+  const platforms = release.platforms as OtaProjectedPlatforms
+
+  return OTA_PLATFORMS.flatMap((platform) => {
+    const platformPayload = platforms[platform]
+
+    if (!platformPayload) {
+      return []
+    }
+
+    return [platformPayload.launchAsset, ...platformPayload.assets].map((asset) =>
+      buildMirroredAssetKey(release, platform, asset.path),
+    )
+  })
 }
 
 export async function mirrorReleaseToStorage(
@@ -222,43 +294,54 @@ export async function mirrorReleaseToStorage(
   },
 ) {
   await putMirroredFiles(env.bucket, input.files)
-  await putReleaseRecord(env.kv, input.release.product, input.release.releaseVersion, input.release)
+  await recordMirroredRelease(
+    input.release,
+    input.files.map((file) => file.key),
+    env.kv,
+  )
+}
 
-  const mirroredFileKeys = new Set(input.files.map((file) => file.key))
+/**
+ * Stores the release metadata and moves the latest pointers of every platform whose payload was
+ * fully mirrored.
+ */
+async function recordMirroredRelease(
+  release: OtaRelease,
+  mirroredKeys: readonly string[],
+  kv: KVNamespace,
+) {
+  await putReleaseRecord(kv, release.product, release.releaseVersion, release)
+  await advanceLatestPointers(release, mirroredKeys, kv)
+}
+
+async function advanceLatestPointers(
+  release: OtaRelease,
+  mirroredKeys: readonly string[],
+  kv: KVNamespace,
+) {
+  const mirroredFileKeys = new Set(mirroredKeys)
 
   for (const platform of OTA_PLATFORMS) {
-    if (!hasCompleteMirroredPayload(input.release, platform, mirroredFileKeys)) {
+    if (!hasCompleteMirroredPayload(release, platform, mirroredFileKeys)) {
+      continue
+    }
+
+    const latestKey = KV_KEYS.latest(
+      release.product,
+      release.channel,
+      release.runtimeVersion,
+      platform,
+    )
+    const currentPointer = await kv.get<LatestReleasePointerRecord>(latestKey, "json")
+
+    if (!shouldPersistReleaseVersion(currentPointer?.releaseVersion, release.releaseVersion)) {
       continue
     }
 
     const latestReleasePointer: LatestReleasePointerRecord = {
-      releaseVersion: input.release.releaseVersion,
+      releaseVersion: release.releaseVersion,
     }
-    const currentPointer = await env.kv.get<LatestReleasePointerRecord>(
-      KV_KEYS.latest(
-        input.release.product,
-        input.release.channel,
-        input.release.runtimeVersion,
-        platform,
-      ),
-      "json",
-    )
-
-    if (
-      !shouldPersistReleaseVersion(currentPointer?.releaseVersion, input.release.releaseVersion)
-    ) {
-      continue
-    }
-
-    await env.kv.put(
-      KV_KEYS.latest(
-        input.release.product,
-        input.release.channel,
-        input.release.runtimeVersion,
-        platform,
-      ),
-      JSON.stringify(latestReleasePointer),
-    )
+    await kv.put(latestKey, JSON.stringify(latestReleasePointer))
   }
 }
 
@@ -402,7 +485,7 @@ async function fetchReleaseMetadata(
   return otaReleaseSchema.parse(await response.json())
 }
 
-async function fetchArchiveBuffer(
+async function fetchArchiveStream(
   url: string,
   env: Pick<Env, "GITHUB_OWNER" | "GITHUB_REPO" | "GITHUB_TOKEN">,
 ) {
@@ -410,11 +493,11 @@ async function fetchArchiveBuffer(
     headers: createGitHubAssetHeaders(env),
   })
 
-  if (!response.ok) {
+  if (!response.ok || !response.body) {
     throw new Error(`Failed to fetch OTA archive from ${url}: ${response.status}`)
   }
 
-  return new Uint8Array(await response.arrayBuffer())
+  return response.body
 }
 
 function createGitHubAssetHeaders(env: Pick<Env, "GITHUB_OWNER" | "GITHUB_REPO" | "GITHUB_TOKEN">) {

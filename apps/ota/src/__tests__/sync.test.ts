@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { Env } from "../env"
 import otaWorker from "../index"
-import { extractMirroredFiles } from "../lib/archive"
+import { extractMirroredFiles, mirrorArchiveFiles } from "../lib/archive"
 import { KV_KEYS } from "../lib/constants"
 import type { GitHubRequestError } from "../lib/github"
 import { listPublishedOtaReleases } from "../lib/github"
@@ -376,6 +376,208 @@ describe("extractMirroredFiles", () => {
         archiveBuffer,
       }),
     ).rejects.toThrow('Archive file "bundles/ios-main.js" hash mismatch')
+  })
+})
+
+describe("mirrorArchiveFiles", () => {
+  it("streams a large archive and uploads each referenced file as soon as it is extracted", async () => {
+    const iosBundle = new Uint8Array(300_000).map((_, index) => index % 251)
+    const androidBundle = textEncoder.encode("console.log('android')")
+    const archive = await createTarArchive([
+      { name: "bundles/ios-main.js", body: iosBundle },
+      { name: "bundles/unused.js", body: textEncoder.encode("console.log('unused')") },
+      { name: "bundles/android-main.js", body: androidBundle },
+    ])
+    const uploads: string[] = []
+
+    const keys = await mirrorArchiveFiles({
+      release: await createReleaseMetadata({
+        platforms: {
+          ios: {
+            launchAsset: {
+              path: "bundles/ios-main.js",
+              sha256: await sha256Hex(iosBundle),
+              contentType: "application/javascript",
+            },
+            assets: [],
+          },
+          android: {
+            launchAsset: {
+              path: "bundles/android-main.js",
+              sha256: await sha256Hex(androidBundle),
+              contentType: "application/javascript",
+            },
+            assets: [],
+          },
+        },
+      }),
+      archive: createChunkedStream(archive, { chunkSize: 32 * 1024 }),
+      onFile: async (file) => {
+        // A slow upload makes extraction wait on backpressure
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        uploads.push(`${file.key}:${file.body.byteLength}`)
+      },
+    })
+
+    expect(keys).toEqual([
+      "mobile/production/0.4.1/0.4.2/ios/bundles/ios-main.js",
+      "mobile/production/0.4.1/0.4.2/android/bundles/android-main.js",
+    ])
+    expect(uploads).toEqual([
+      "mobile/production/0.4.1/0.4.2/ios/bundles/ios-main.js:300000",
+      "mobile/production/0.4.1/0.4.2/android/bundles/android-main.js:22",
+    ])
+  })
+
+  it("stops the download when a referenced file fails verification", async () => {
+    const archive = await createTarArchive([
+      { name: "bundles/ios-main.js", body: textEncoder.encode("console.log('tampered')") },
+      { name: "bundles/unused.js", body: new Uint8Array(200_000) },
+    ])
+    const cancel = vi.fn()
+
+    await expect(
+      mirrorArchiveFiles({
+        release: await createReleaseMetadata(),
+        archive: createChunkedStream(archive, { chunkSize: 16 * 1024, delayMs: 10, cancel }),
+        onFile: async () => {},
+      }),
+    ).rejects.toThrow('Archive file "bundles/ios-main.js" hash mismatch')
+    expect(cancel).toHaveBeenCalled()
+  })
+})
+
+describe("syncGitHubReleases archive mirroring", () => {
+  const githubEnv = {
+    GITHUB_OWNER: "RSSNext",
+    GITHUB_REPO: "Folo",
+    GITHUB_TOKEN: "token",
+  }
+
+  function stubReleaseFetch(routes: Record<string, () => Response>) {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input)
+      const route = routes[url]
+
+      if (!route) {
+        throw new Error(`Unhandled fetch URL: ${url}`)
+      }
+
+      return route()
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    return fetchMock
+  }
+
+  it("skips downloading archives of releases that are already mirrored", async () => {
+    const otaRelease = await createReleaseMetadata()
+    const kvEntries = new Map<string, unknown>([
+      [KV_KEYS.release("mobile", "0.4.2"), JSON.stringify(otaRelease)],
+    ])
+    const fetchMock = stubReleaseFetch({
+      "https://api.github.com/repos/RSSNext/Folo/releases": () =>
+        new Response(
+          JSON.stringify([
+            createGitHubReleaseAssetSet(
+              "mobile/v0.4.2",
+              "https://example.com/ota.json",
+              "https://example.com/ota.tar.zst",
+            ),
+          ]),
+          { status: 200, headers: { ETag: '"etag-new"' } },
+        ),
+      "https://example.com/ota.json": () => new Response(JSON.stringify(otaRelease)),
+    })
+
+    const env = createEnv({ kvEntries, envOverrides: githubEnv })
+
+    await syncGitHubReleases(env)
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain(
+      "https://example.com/ota.tar.zst",
+    )
+    expect(env.OTA_KV.put).not.toHaveBeenCalledWith(
+      KV_KEYS.release("mobile", "0.4.2"),
+      expect.anything(),
+    )
+    // Pointers are reconciled even when the record is unchanged
+    expect(kvEntries.get(KV_KEYS.latest("mobile", "production", "0.4.1", "ios"))).toBe(
+      JSON.stringify({ releaseVersion: "0.4.2" }),
+    )
+    expect(kvEntries.get(KV_KEYS.githubEtag)).toBe('"etag-new"')
+  })
+
+  it("refreshes the release record without downloading when only its metadata changed", async () => {
+    const otaRelease = await createReleaseMetadata()
+    const kvEntries = new Map<string, unknown>([
+      [
+        KV_KEYS.release("mobile", "0.4.2"),
+        JSON.stringify({ ...otaRelease, policy: { ...otaRelease.policy, message: "Old" } }),
+      ],
+    ])
+    const fetchMock = stubReleaseFetch({
+      "https://api.github.com/repos/RSSNext/Folo/releases": () =>
+        new Response(
+          JSON.stringify([
+            createGitHubReleaseAssetSet(
+              "mobile/v0.4.2",
+              "https://example.com/ota.json",
+              "https://example.com/ota.tar.zst",
+            ),
+          ]),
+          { status: 200 },
+        ),
+      "https://example.com/ota.json": () => new Response(JSON.stringify(otaRelease)),
+    })
+
+    await syncGitHubReleases(createEnv({ kvEntries, envOverrides: githubEnv }))
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).not.toContain(
+      "https://example.com/ota.tar.zst",
+    )
+    expect(kvEntries.get(KV_KEYS.release("mobile", "0.4.2"))).toBe(JSON.stringify(otaRelease))
+    expect(kvEntries.get(KV_KEYS.latest("mobile", "production", "0.4.1", "ios"))).toBe(
+      JSON.stringify({ releaseVersion: "0.4.2" }),
+    )
+  })
+
+  it("keeps mirroring later releases when an earlier release fails", async () => {
+    const otaRelease = await createReleaseMetadata()
+    const archive = await createTarArchive([
+      { name: "bundles/ios-main.js", body: textEncoder.encode("console.log('ios')") },
+    ])
+    const kvEntries = new Map<string, unknown>()
+    const bucketEntries = new Map<string, { body: Uint8Array; headers?: Record<string, string> }>()
+    stubReleaseFetch({
+      "https://api.github.com/repos/RSSNext/Folo/releases": () =>
+        new Response(
+          JSON.stringify([
+            createGitHubReleaseAssetSet(
+              "mobile/v0.4.3",
+              "https://example.com/broken.json",
+              "https://example.com/broken.tar.zst",
+            ),
+            createGitHubReleaseAssetSet(
+              "mobile/v0.4.2",
+              "https://example.com/ota.json",
+              "https://example.com/ota.tar.zst",
+            ),
+          ]),
+          { status: 200, headers: { ETag: '"etag-new"' } },
+        ),
+      "https://example.com/broken.json": () => new Response("oops", { status: 500 }),
+      "https://example.com/ota.json": () => new Response(JSON.stringify(otaRelease)),
+      "https://example.com/ota.tar.zst": () => new Response(archive.slice()),
+    })
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    await expect(
+      syncGitHubReleases(createEnv({ kvEntries, bucketEntries, envOverrides: githubEnv })),
+    ).rejects.toThrow("Failed to sync 1 release(s)")
+
+    expect(bucketEntries.has("mobile/production/0.4.1/0.4.2/ios/bundles/ios-main.js")).toBe(true)
+    expect(kvEntries.get(KV_KEYS.release("mobile", "0.4.2"))).toBe(JSON.stringify(otaRelease))
+    expect(kvEntries.has(KV_KEYS.githubEtag)).toBe(false)
   })
 })
 
@@ -3114,6 +3316,32 @@ function createR2Bucket(
       },
     ),
   } as unknown as R2Bucket
+}
+
+function createChunkedStream(
+  bytes: Uint8Array,
+  options: { chunkSize: number; delayMs?: number; cancel?: () => void },
+) {
+  let offset = 0
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (options.delayMs) {
+        await new Promise((resolve) => setTimeout(resolve, options.delayMs))
+      }
+
+      if (offset >= bytes.byteLength) {
+        controller.close()
+        return
+      }
+
+      controller.enqueue(bytes.slice(offset, offset + options.chunkSize))
+      offset += options.chunkSize
+    },
+    cancel() {
+      options.cancel?.()
+    },
+  })
 }
 
 function createExecutionContext(): ExecutionContext {
