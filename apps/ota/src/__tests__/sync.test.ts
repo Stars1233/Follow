@@ -500,31 +500,6 @@ describe("syncGitHubReleases", () => {
 
   it("backfills latest release summaries when GitHub returns 304 and the summary keys are missing", async () => {
     const kvEntries = new Map<string, unknown>([[KV_KEYS.githubEtag, '"etag-current"']])
-    const mobileRelease = await createReleaseMetadata({
-      releaseVersion: "0.4.3",
-      releaseKind: "store",
-      runtimeVersion: "0.4.3",
-      publishedAt: "2026-04-10T16:00:00Z",
-      git: {
-        tag: "mobile/v0.4.3",
-        commit: "abcdef1234567895",
-      },
-      platforms: {},
-    })
-    const desktopRelease = createDesktopReleaseMetadata({
-      releaseVersion: "1.5.2",
-      releaseKind: "binary",
-      runtimeVersion: null,
-      publishedAt: "2026-04-11T12:00:00Z",
-      git: {
-        tag: "desktop/v1.5.2",
-        commit: "abcdef1234567891",
-      },
-      desktop: {
-        renderer: null,
-        app: null,
-      },
-    })
 
     let githubRequestCount = 0
     vi.stubGlobal(
@@ -539,29 +514,28 @@ describe("syncGitHubReleases", () => {
             return new Response(null, { status: 304 })
           }
 
+          // The backfill only needs the release list, so OTA metadata assets are never fetched.
           return new Response(
             JSON.stringify([
               createGitHubReleaseAssetSet(
                 "desktop/v1.5.2",
                 "https://example.com/desktop.json",
                 null,
+                { publishedAt: "2026-04-11T12:00:00Z" },
               ),
-              createGitHubReleaseAssetSet("mobile/v0.4.3", "https://example.com/mobile.json", null),
+              createGitHubReleaseAssetSet(
+                "mobile/v0.4.3",
+                "https://example.com/mobile.json",
+                null,
+                {
+                  publishedAt: "2026-04-10T16:00:00Z",
+                  apkUrl:
+                    "https://github.com/RSSNext/Folo/releases/download/mobile/v0.4.3/build.apk",
+                },
+              ),
             ]),
             { status: 200 },
           )
-        }
-
-        if (url === "https://example.com/mobile.json") {
-          return new Response(JSON.stringify(mobileRelease), {
-            headers: { "Content-Type": "application/json" },
-          })
-        }
-
-        if (url === "https://example.com/desktop.json") {
-          return new Response(JSON.stringify(desktopRelease), {
-            headers: { "Content-Type": "application/json" },
-          })
         }
 
         throw new Error(`Unhandled fetch URL: ${url}`)
@@ -592,6 +566,105 @@ describe("syncGitHubReleases", () => {
       publishedAt: "2026-04-11T12:00:00Z",
       tag: "desktop/v1.5.2",
     })
+    expect(JSON.parse(String(kvEntries.get(KV_KEYS.latestAndroidApk)))).toEqual({
+      version: "0.4.3",
+      publishedAt: "2026-04-10T16:00:00Z",
+      tag: "mobile/v0.4.3",
+      downloadUrl: "https://github.com/RSSNext/Folo/releases/download/mobile/v0.4.3/build.apk",
+    })
+    expect(kvEntries.get(KV_KEYS.githubEtag)).toBe('"etag-current"')
+  })
+
+  it("refreshes stale latest release records on 304 until the Android APK record exists", async () => {
+    // Records written before store-mode releases were tracked still point at the last OTA release.
+    const staleDesktopRecord = {
+      product: "desktop",
+      version: "1.14.0",
+      publishedAt: "2026-09-18T11:50:46.222Z",
+      tag: "desktop/v1.14.0",
+    }
+    const kvEntries = new Map<string, unknown>([
+      [KV_KEYS.githubEtag, '"etag-current"'],
+      [
+        KV_KEYS.latestReleaseVersion("mobile"),
+        {
+          product: "mobile",
+          version: "0.5.5",
+          publishedAt: "2026-06-22T07:10:19.849Z",
+          tag: "mobile/v0.5.5",
+        },
+      ],
+      [KV_KEYS.latestReleaseVersion("desktop"), staleDesktopRecord],
+    ])
+
+    let githubRequestCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input)
+
+        if (url === "https://api.github.com/repos/RSSNext/Folo/releases") {
+          githubRequestCount += 1
+
+          if (new Headers(init?.headers).get("If-None-Match") === '"etag-current"') {
+            return new Response(null, { status: 304 })
+          }
+
+          return new Response(
+            JSON.stringify([
+              createGitHubRelease("mobile/v0.5.10", {
+                publishedAt: "2026-09-18T12:32:03Z",
+                assetNames: ["build.apk"],
+              }),
+              createGitHubRelease("desktop/v1.14.0", {
+                publishedAt: "2026-09-18T11:50:59Z",
+                assetNames: ["Folo-1.14.0-macos-arm64.dmg", "ota-release.json"],
+              }),
+              createGitHubRelease("mobile/v0.5.5", {
+                publishedAt: "2026-06-22T07:10:22Z",
+                prerelease: true,
+                assetNames: ["build.apk", "dist.tar.zst", "ota-release.json"],
+              }),
+            ]),
+            { status: 200 },
+          )
+        }
+
+        throw new Error(`Unhandled fetch URL: ${url}`)
+      }),
+    )
+
+    const env = createEnv({
+      kvEntries,
+      envOverrides: {
+        GITHUB_OWNER: "RSSNext",
+        GITHUB_REPO: "Folo",
+        GITHUB_TOKEN: "token",
+      },
+    })
+
+    await syncGitHubReleases(env)
+
+    expect(githubRequestCount).toBe(2)
+    expect(JSON.parse(String(kvEntries.get(KV_KEYS.latestReleaseVersion("mobile"))))).toEqual({
+      product: "mobile",
+      version: "0.5.10",
+      publishedAt: "2026-09-18T12:32:03Z",
+      tag: "mobile/v0.5.10",
+    })
+    expect(JSON.parse(String(kvEntries.get(KV_KEYS.latestAndroidApk)))).toEqual({
+      version: "0.5.10",
+      publishedAt: "2026-09-18T12:32:03Z",
+      tag: "mobile/v0.5.10",
+      downloadUrl: "https://github.com/RSSNext/Folo/releases/download/mobile/v0.5.10/build.apk",
+    })
+    expect(kvEntries.get(KV_KEYS.latestReleaseVersion("desktop"))).toBe(staleDesktopRecord)
+    expect(kvEntries.get(KV_KEYS.syncLastSuccessAt)).toEqual(expect.any(String))
+
+    // Once every record exists, an unchanged release list costs a single conditional request.
+    await syncGitHubReleases(env)
+
+    expect(githubRequestCount).toBe(3)
   })
 
   it("does not advance sync markers when a later release fails validation", async () => {
@@ -2337,8 +2410,18 @@ describe("latest release summary", () => {
                 "desktop/v1.5.2",
                 "https://example.com/desktop.json",
                 null,
+                { publishedAt: "2026-04-11T12:00:05Z" },
               ),
-              createGitHubReleaseAssetSet("mobile/v0.4.3", "https://example.com/mobile.json", null),
+              createGitHubReleaseAssetSet(
+                "mobile/v0.4.3",
+                "https://example.com/mobile.json",
+                null,
+                {
+                  publishedAt: "2026-04-10T16:00:05Z",
+                  apkUrl:
+                    "https://github.com/RSSNext/Folo/releases/download/mobile/v0.4.3/build.apk",
+                },
+              ),
             ]),
             { status: 200 },
           )
@@ -2374,15 +2457,362 @@ describe("latest release summary", () => {
     expect(JSON.parse(String(kvEntries.get(KV_KEYS.latestReleaseVersion("mobile"))))).toEqual({
       product: "mobile",
       version: "0.4.3",
-      publishedAt: "2026-04-10T16:00:00Z",
+      publishedAt: "2026-04-10T16:00:05Z",
       tag: "mobile/v0.4.3",
     })
     expect(JSON.parse(String(kvEntries.get(KV_KEYS.latestReleaseVersion("desktop"))))).toEqual({
       product: "desktop",
       version: "1.5.2",
-      publishedAt: "2026-04-11T12:00:00Z",
+      publishedAt: "2026-04-11T12:00:05Z",
       tag: "desktop/v1.5.2",
     })
+    expect(JSON.parse(String(kvEntries.get(KV_KEYS.latestAndroidApk)))).toEqual({
+      version: "0.4.3",
+      publishedAt: "2026-04-10T16:00:05Z",
+      tag: "mobile/v0.4.3",
+      downloadUrl: "https://github.com/RSSNext/Folo/releases/download/mobile/v0.4.3/build.apk",
+    })
+    // OTA metadata is still processed for store policy records.
+    expect(kvEntries.get(KV_KEYS.policy("mobile", "production"))).toBe(
+      JSON.stringify(mobileRelease),
+    )
+  })
+
+  it("advances the latest mobile release to store-mode releases that ship without OTA metadata", async () => {
+    const otaBundle = textEncoder.encode("console.log('ota-0.5.5')")
+    const otaRelease = await createReleaseMetadata({
+      releaseVersion: "0.5.5",
+      runtimeVersion: "0.5.0",
+      publishedAt: "2026-06-22T07:10:19.849Z",
+      git: {
+        tag: "mobile/v0.5.5",
+        commit: "abcdef1234567897",
+      },
+      platforms: {
+        android: {
+          launchAsset: {
+            path: "bundles/android-main.js",
+            sha256: await sha256Hex(otaBundle),
+            contentType: "application/javascript",
+          },
+          assets: [],
+        },
+      },
+    })
+    const otaArchive = await createTarArchive([
+      {
+        name: "bundles/android-main.js",
+        body: otaBundle,
+      },
+    ])
+    const desktopRecord = {
+      product: "desktop",
+      version: "1.14.0",
+      publishedAt: "2026-09-18T11:50:46.222Z",
+      tag: "desktop/v1.14.0",
+    }
+    const kvEntries = new Map<string, unknown>([
+      [KV_KEYS.githubEtag, '"etag-old"'],
+      [
+        KV_KEYS.latestReleaseVersion("mobile"),
+        {
+          product: "mobile",
+          version: "0.5.5",
+          publishedAt: "2026-06-22T07:10:19.849Z",
+          tag: "mobile/v0.5.5",
+        },
+      ],
+      [KV_KEYS.latestReleaseVersion("desktop"), desktopRecord],
+    ])
+    const bucketEntries = new Map<string, { body: Uint8Array; headers?: Record<string, string> }>()
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input)
+
+        if (url === "https://api.github.com/repos/RSSNext/Folo/releases") {
+          return new Response(
+            JSON.stringify([
+              createGitHubRelease("mobile/v0.5.10", {
+                publishedAt: "2026-09-18T12:32:03Z",
+                assetNames: ["build.apk"],
+              }),
+              createGitHubRelease("desktop/v1.14.0", {
+                publishedAt: "2026-09-18T11:50:59Z",
+                assetNames: ["Folo-1.14.0-macos-arm64.dmg"],
+              }),
+              createGitHubRelease("mobile/v0.5.9", {
+                publishedAt: "2026-09-02T05:29:47Z",
+                assetNames: ["build.apk"],
+              }),
+              createGitHubReleaseAssetSet(
+                "mobile/v0.5.5",
+                "https://example.com/ota-0.5.5.json",
+                "https://example.com/ota-0.5.5.tar.zst",
+                {
+                  publishedAt: "2026-06-22T07:10:22Z",
+                  prerelease: true,
+                  apkUrl:
+                    "https://github.com/RSSNext/Folo/releases/download/mobile/v0.5.5/build.apk",
+                },
+              ),
+            ]),
+            {
+              status: 200,
+              headers: {
+                ETag: '"etag-new"',
+              },
+            },
+          )
+        }
+
+        if (url === "https://example.com/ota-0.5.5.json") {
+          return new Response(JSON.stringify(otaRelease), {
+            headers: { "Content-Type": "application/json" },
+          })
+        }
+
+        if (url === "https://example.com/ota-0.5.5.tar.zst") {
+          const archivePayload = new Uint8Array(otaArchive.byteLength)
+          archivePayload.set(otaArchive)
+
+          return new Response(archivePayload.buffer, {
+            headers: { "Content-Type": "application/octet-stream" },
+          })
+        }
+
+        throw new Error(`Unhandled fetch URL: ${url}`)
+      }),
+    )
+
+    await syncGitHubReleases(
+      createEnv({
+        kvEntries,
+        bucketEntries,
+        envOverrides: {
+          GITHUB_OWNER: "RSSNext",
+          GITHUB_REPO: "Folo",
+          GITHUB_TOKEN: "token",
+        },
+      }),
+    )
+
+    expect(JSON.parse(String(kvEntries.get(KV_KEYS.latestReleaseVersion("mobile"))))).toEqual({
+      product: "mobile",
+      version: "0.5.10",
+      publishedAt: "2026-09-18T12:32:03Z",
+      tag: "mobile/v0.5.10",
+    })
+    expect(JSON.parse(String(kvEntries.get(KV_KEYS.latestAndroidApk)))).toEqual({
+      version: "0.5.10",
+      publishedAt: "2026-09-18T12:32:03Z",
+      tag: "mobile/v0.5.10",
+      downloadUrl: "https://github.com/RSSNext/Folo/releases/download/mobile/v0.5.10/build.apk",
+    })
+    // The desktop record already points at the newest release, so it is left untouched.
+    expect(kvEntries.get(KV_KEYS.latestReleaseVersion("desktop"))).toBe(desktopRecord)
+    // The OTA prerelease is still mirrored and served through its runtime pointer.
+    expect(kvEntries.get(KV_KEYS.latest("mobile", "production", "0.5.0", "android"))).toBe(
+      JSON.stringify({ releaseVersion: "0.5.5" }),
+    )
+    expect(bucketEntries.has("mobile/production/0.5.0/0.5.5/android/bundles/android-main.js")).toBe(
+      true,
+    )
+    expect(kvEntries.get(KV_KEYS.githubEtag)).toBe('"etag-new"')
+  })
+
+  it("ignores drafts and prereleases when tracking the latest product releases", async () => {
+    const kvEntries = new Map<string, unknown>()
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input)
+
+        if (url === "https://api.github.com/repos/RSSNext/Folo/releases") {
+          return new Response(
+            JSON.stringify([
+              createGitHubRelease("mobile/v0.6.0", {
+                draft: true,
+                publishedAt: null,
+                assetNames: ["build.apk"],
+              }),
+              createGitHubRelease("desktop/v1.15.0", {
+                prerelease: true,
+                publishedAt: "2026-09-25T10:00:00Z",
+                assetNames: ["Folo-1.15.0-macos-arm64.dmg"],
+              }),
+              createGitHubRelease("mobile/v0.5.11", {
+                prerelease: true,
+                publishedAt: "2026-09-25T09:00:00Z",
+                assetNames: ["build.apk"],
+              }),
+              createGitHubRelease("mobile/v0.5.10", {
+                publishedAt: "2026-09-18T12:32:03Z",
+                assetNames: ["build.apk"],
+              }),
+              createGitHubRelease("desktop/v1.14.0", {
+                publishedAt: "2026-09-18T11:50:59Z",
+                assetNames: ["Folo-1.14.0-macos-arm64.dmg"],
+              }),
+            ]),
+            { status: 200 },
+          )
+        }
+
+        throw new Error(`Unhandled fetch URL: ${url}`)
+      }),
+    )
+
+    await syncGitHubReleases(
+      createEnv({
+        kvEntries,
+        envOverrides: {
+          GITHUB_OWNER: "RSSNext",
+          GITHUB_REPO: "Folo",
+          GITHUB_TOKEN: "token",
+        },
+      }),
+    )
+
+    expect(JSON.parse(String(kvEntries.get(KV_KEYS.latestReleaseVersion("mobile"))))).toEqual({
+      product: "mobile",
+      version: "0.5.10",
+      publishedAt: "2026-09-18T12:32:03Z",
+      tag: "mobile/v0.5.10",
+    })
+    expect(JSON.parse(String(kvEntries.get(KV_KEYS.latestReleaseVersion("desktop"))))).toEqual({
+      product: "desktop",
+      version: "1.14.0",
+      publishedAt: "2026-09-18T11:50:59Z",
+      tag: "desktop/v1.14.0",
+    })
+    expect(JSON.parse(String(kvEntries.get(KV_KEYS.latestAndroidApk)))).toEqual({
+      version: "0.5.10",
+      publishedAt: "2026-09-18T12:32:03Z",
+      tag: "mobile/v0.5.10",
+      downloadUrl: "https://github.com/RSSNext/Folo/releases/download/mobile/v0.5.10/build.apk",
+    })
+  })
+
+  it("keeps the Android APK on the newest published release that ships build.apk", async () => {
+    const kvEntries = new Map<string, unknown>()
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input)
+
+        if (url === "https://api.github.com/repos/RSSNext/Folo/releases") {
+          return new Response(
+            JSON.stringify([
+              createGitHubRelease("mobile/v0.5.11", {
+                publishedAt: "2026-09-25T09:00:00Z",
+                assetNames: ["release-notes.txt"],
+              }),
+              createGitHubRelease("mobile/v0.5.10", {
+                publishedAt: "2026-09-18T12:32:03Z",
+                assetNames: ["build.apk"],
+              }),
+            ]),
+            { status: 200 },
+          )
+        }
+
+        throw new Error(`Unhandled fetch URL: ${url}`)
+      }),
+    )
+
+    await syncGitHubReleases(
+      createEnv({
+        kvEntries,
+        envOverrides: {
+          GITHUB_OWNER: "RSSNext",
+          GITHUB_REPO: "Folo",
+          GITHUB_TOKEN: "token",
+        },
+      }),
+    )
+
+    expect(JSON.parse(String(kvEntries.get(KV_KEYS.latestReleaseVersion("mobile"))))).toEqual({
+      product: "mobile",
+      version: "0.5.11",
+      publishedAt: "2026-09-25T09:00:00Z",
+      tag: "mobile/v0.5.11",
+    })
+    expect(JSON.parse(String(kvEntries.get(KV_KEYS.latestAndroidApk)))).toEqual({
+      version: "0.5.10",
+      publishedAt: "2026-09-18T12:32:03Z",
+      tag: "mobile/v0.5.10",
+      downloadUrl: "https://github.com/RSSNext/Folo/releases/download/mobile/v0.5.10/build.apk",
+    })
+  })
+
+  it("never moves the latest release records backwards", async () => {
+    const mobileRecord = {
+      product: "mobile",
+      version: "0.5.12",
+      publishedAt: "2026-10-01T00:00:00Z",
+      tag: "mobile/v0.5.12",
+    }
+    const desktopRecord = {
+      product: "desktop",
+      version: "1.15.0",
+      publishedAt: "2026-10-01T00:00:00Z",
+      tag: "desktop/v1.15.0",
+    }
+    const apkRecord = {
+      version: "0.5.12",
+      publishedAt: "2026-10-01T00:00:00Z",
+      tag: "mobile/v0.5.12",
+      downloadUrl: "https://github.com/RSSNext/Folo/releases/download/mobile/v0.5.12/build.apk",
+    }
+    const kvEntries = new Map<string, unknown>([
+      [KV_KEYS.latestReleaseVersion("mobile"), mobileRecord],
+      [KV_KEYS.latestReleaseVersion("desktop"), desktopRecord],
+      [KV_KEYS.latestAndroidApk, apkRecord],
+    ])
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input)
+
+        if (url === "https://api.github.com/repos/RSSNext/Folo/releases") {
+          return new Response(
+            JSON.stringify([
+              createGitHubRelease("mobile/v0.5.10", {
+                publishedAt: "2026-09-18T12:32:03Z",
+                assetNames: ["build.apk"],
+              }),
+              createGitHubRelease("desktop/v1.14.0", {
+                publishedAt: "2026-09-18T11:50:59Z",
+                assetNames: ["Folo-1.14.0-macos-arm64.dmg"],
+              }),
+            ]),
+            { status: 200 },
+          )
+        }
+
+        throw new Error(`Unhandled fetch URL: ${url}`)
+      }),
+    )
+
+    await syncGitHubReleases(
+      createEnv({
+        kvEntries,
+        envOverrides: {
+          GITHUB_OWNER: "RSSNext",
+          GITHUB_REPO: "Folo",
+          GITHUB_TOKEN: "token",
+        },
+      }),
+    )
+
+    expect(kvEntries.get(KV_KEYS.latestReleaseVersion("mobile"))).toBe(mobileRecord)
+    expect(kvEntries.get(KV_KEYS.latestReleaseVersion("desktop"))).toBe(desktopRecord)
+    expect(kvEntries.get(KV_KEYS.latestAndroidApk)).toBe(apkRecord)
   })
 })
 
@@ -2803,12 +3233,16 @@ function createGitHubReleaseAssetSet(
   options?: {
     metadataApiUrl?: string
     archiveApiUrl?: string
+    publishedAt?: string
+    prerelease?: boolean
+    apkUrl?: string
   },
 ) {
   return {
     tag_name: tag,
     draft: false,
-    prerelease: false,
+    prerelease: options?.prerelease ?? false,
+    ...(options?.publishedAt ? { published_at: options.publishedAt } : {}),
     assets: [
       {
         name: "ota-release.json",
@@ -2824,7 +3258,38 @@ function createGitHubReleaseAssetSet(
             },
           ]
         : []),
+      ...(options?.apkUrl
+        ? [
+            {
+              name: "build.apk",
+              url: options.apkUrl,
+              browser_download_url: options.apkUrl,
+            },
+          ]
+        : []),
     ],
+  }
+}
+
+function createGitHubRelease(
+  tag: string,
+  options: {
+    publishedAt: string | null
+    draft?: boolean
+    prerelease?: boolean
+    assetNames?: string[]
+  },
+) {
+  return {
+    tag_name: tag,
+    draft: options.draft ?? false,
+    prerelease: options.prerelease ?? false,
+    published_at: options.publishedAt,
+    assets: (options.assetNames ?? []).map((name, index) => ({
+      name,
+      url: `https://api.github.com/repos/RSSNext/Folo/releases/assets/${tag}/${index}`,
+      browser_download_url: `https://github.com/RSSNext/Folo/releases/download/${tag}/${name}`,
+    })),
   }
 }
 

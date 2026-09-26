@@ -2,14 +2,14 @@ import type { Env } from "../env"
 import type { MirroredFile } from "./archive"
 import { buildMirroredAssetKey, extractMirroredFiles } from "./archive"
 import { KV_KEYS } from "./constants"
-import { listPublishedOtaReleases } from "./github"
+import { fetchGitHubReleases, toOtaReleaseSummaries } from "./github"
 import type { BinaryPolicyRecord, LatestReleasePointerRecord } from "./kv"
+import { putBinaryPolicyRecord, putReleaseRecord, putStoreVersionRecord } from "./kv"
 import {
-  putBinaryPolicyRecord,
-  putLatestReleaseVersionRecord,
-  putReleaseRecord,
-  putStoreVersionRecord,
-} from "./kv"
+  ensureLatestProductReleases,
+  persistLatestProductReleases,
+  selectLatestProductReleases,
+} from "./latest-release"
 import { putMirroredFiles } from "./r2"
 import type { DesktopDistribution, OtaPlatform, OtaProjectedPlatforms, OtaRelease } from "./schema"
 import { otaReleaseSchema } from "./schema"
@@ -60,7 +60,7 @@ export async function syncStoreVersions(env: Env) {
 
 async function runSyncGitHubReleases(env: Env) {
   const storedEtag = await env.OTA_KV.get<string>(KV_KEYS.githubEtag)
-  const releasesResult = await listPublishedOtaReleases({
+  const releasesResult = await fetchGitHubReleases({
     owner: env.GITHUB_OWNER,
     repo: env.GITHUB_REPO,
     token: env.GITHUB_TOKEN,
@@ -68,12 +68,19 @@ async function runSyncGitHubReleases(env: Env) {
   })
 
   if (releasesResult.kind === "not-modified") {
-    await ensureLatestReleaseVersionRecords(env)
+    await ensureLatestProductReleases(env)
     await updateSyncLastSuccessAt(env.OTA_KV)
     return
   }
 
-  await persistReleaseSummaries(env, releasesResult.releases)
+  // Track the newest published release of each product from the plain release list before
+  // mirroring OTA payloads: store-mode releases ship without OTA metadata, and a failing OTA
+  // release must not hold back the download links.
+  await persistLatestProductReleases(
+    env.OTA_KV,
+    selectLatestProductReleases(releasesResult.releases),
+  )
+  await persistReleaseSummaries(env, toOtaReleaseSummaries(releasesResult.releases))
 
   if (releasesResult.etag) {
     await env.OTA_KV.put(KV_KEYS.githubEtag, releasesResult.etag)
@@ -168,39 +175,9 @@ async function runSyncStoreVersions(env: Env) {
   await env.OTA_KV.put(KV_KEYS.storeVersionSyncLastSuccessAt, fetchedAt)
 }
 
-async function ensureLatestReleaseVersionRecords(env: Env) {
-  const [mobileLatest, desktopLatest] = await Promise.all([
-    env.OTA_KV.get(KV_KEYS.latestReleaseVersion("mobile")),
-    env.OTA_KV.get(KV_KEYS.latestReleaseVersion("desktop")),
-  ])
-
-  if (mobileLatest && desktopLatest) {
-    return
-  }
-
-  const releasesResult = await listPublishedOtaReleases({
-    owner: env.GITHUB_OWNER,
-    repo: env.GITHUB_REPO,
-    token: env.GITHUB_TOKEN,
-    etag: null,
-  })
-
-  if (releasesResult.kind === "not-modified") {
-    return
-  }
-
-  await persistLatestReleaseVersionRecords(env, releasesResult.releases)
-}
-
 async function persistReleaseSummaries(env: Env, releases: ReleaseSummary[]) {
-  const latestReleaseByProduct = new Map<
-    OtaRelease["product"],
-    Pick<OtaRelease, "releaseVersion" | "publishedAt"> & { tag: string }
-  >()
-
   for (const releaseSummary of releases) {
     const release = await fetchReleaseMetadata(releaseSummary.metadataUrl, env)
-    updateLatestReleaseByProduct(latestReleaseByProduct, release)
 
     if (release.releaseKind === "ota") {
       if (!releaseSummary.archiveUrl) {
@@ -231,56 +208,6 @@ async function persistReleaseSummaries(env: Env, releases: ReleaseSummary[]) {
 
     await putReleaseRecord(env.OTA_KV, release.product, release.releaseVersion, release)
     await putLatestPolicyRecord(env.OTA_KV, release)
-  }
-
-  await writeLatestReleaseVersionRecords(env.OTA_KV, latestReleaseByProduct)
-}
-
-async function persistLatestReleaseVersionRecords(env: Env, releases: ReleaseSummary[]) {
-  const latestReleaseByProduct = new Map<
-    OtaRelease["product"],
-    Pick<OtaRelease, "releaseVersion" | "publishedAt"> & { tag: string }
-  >()
-
-  for (const releaseSummary of releases) {
-    const release = await fetchReleaseMetadata(releaseSummary.metadataUrl, env)
-    updateLatestReleaseByProduct(latestReleaseByProduct, release)
-  }
-
-  await writeLatestReleaseVersionRecords(env.OTA_KV, latestReleaseByProduct)
-}
-
-async function writeLatestReleaseVersionRecords(
-  kv: KVNamespace,
-  latestReleaseByProduct: Map<
-    OtaRelease["product"],
-    Pick<OtaRelease, "releaseVersion" | "publishedAt"> & { tag: string }
-  >,
-) {
-  for (const [product, latestRelease] of latestReleaseByProduct) {
-    await putLatestReleaseVersionRecord(kv, {
-      product,
-      version: latestRelease.releaseVersion,
-      publishedAt: latestRelease.publishedAt,
-      tag: latestRelease.tag,
-    })
-  }
-}
-
-function updateLatestReleaseByProduct(
-  latestReleaseByProduct: Map<
-    OtaRelease["product"],
-    Pick<OtaRelease, "releaseVersion" | "publishedAt"> & { tag: string }
-  >,
-  release: OtaRelease,
-) {
-  const current = latestReleaseByProduct.get(release.product)
-  if (!current || compareSemver(release.releaseVersion, current.releaseVersion) > 0) {
-    latestReleaseByProduct.set(release.product, {
-      releaseVersion: release.releaseVersion,
-      publishedAt: release.publishedAt,
-      tag: release.git.tag,
-    })
   }
 }
 
