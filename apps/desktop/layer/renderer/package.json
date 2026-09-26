@@ -76,6 +76,7 @@
     "lethargy": "1.0.9",
     "lexical": "0.51.0",
     "masonic": "4.1.0",
+    "mdast-util-gfm-strikethrough": "2.0.0",
     "mdast-util-gfm-table": "2.0.0",
     "mdast-util-to-markdown": "2.1.2",
     "motion": "13.4.0",
