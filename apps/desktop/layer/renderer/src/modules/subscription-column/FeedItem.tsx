@@ -165,10 +165,7 @@ const FeedItemImpl = ({ view, feedId, className, isPreview }: FeedItemProps) => 
                   body:
                     `### Error\n\nError Message: ${feed.errorMessage}\n\n### Info\n\n` +
                     `\`\`\`json\n${JSON.stringify(feed, null, 2)}\n\`\`\``,
-                  label: "bug",
                   title: `Feed Error: ${feed.title}, ${feed.errorMessage}`,
-                  target: "discussion",
-                  category: "feed-expired",
                 }),
               )
             },
