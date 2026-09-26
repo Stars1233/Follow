@@ -13,7 +13,7 @@ import { useModalStack } from "~/components/ui/modal/stacked/hooks"
 import { Paper } from "~/components/ui/paper"
 import { DebugRegistry } from "~/modules/debug/registry"
 
-import { linkifyChangelog } from "./utils"
+import { getDesktopReleaseUrl, linkifyChangelog } from "./utils"
 
 const AppNotificationContainer: FC = () => {
   const { present } = useModalStack()
@@ -60,7 +60,7 @@ const AppNotificationContainer: FC = () => {
           <div className="font-medium text-text">
             App is upgraded to{" "}
             <a
-              href={`${repository.url}/releases/tag/v${APP_VERSION}`}
+              href={getDesktopReleaseUrl(repository.url, APP_VERSION)}
               target="_blank"
               rel="noreferrer"
             >
