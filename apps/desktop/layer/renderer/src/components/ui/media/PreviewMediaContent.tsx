@@ -212,8 +212,10 @@ const HeaderActions: FC<{
 
   const { dismiss } = useCurrentModal()
   return (
+    // `safe-inset-top` keeps the actions below the custom Windows title bar, whose window
+    // controls would otherwise cover the close button
     <m.div
-      className="pointer-events-none absolute inset-x-0 top-0 z-[100] flex h-16 items-center justify-end gap-2 px-3"
+      className="pointer-events-none absolute inset-x-0 z-[100] flex h-16 items-center justify-end gap-2 px-3 safe-inset-top"
       variants={headerActionsVariants}
       initial="initial"
       animate="animate"
